@@ -1,0 +1,19 @@
+# Dependencias del proyecto
+sqlmodel>=0.0.14
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+jinja2>=3.1.0
+python-multipart>=0.0.6
+pydantic>=2.5.0
+
+# Base de datos
+sqlite3
+psycopg2-binary  # Para PostgreSQL en producción
+
+# Utilidades adicionales
+python-dotenv>=1.0.0
+openpyxl>=3.1.0  # Para manejo de archivos Excel (importación presupuesto)
+
+# Testing (opcional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
