@@ -37,3 +37,5 @@ El proyecto tiene como objetivo proporcionar una plataforma para la gestión efi
 ### Analisis y Diseño
 Para el análisis y diseño del proyecto, se utilizará un enfoque basado en la arquitectura de software MVC (Modelo-Vista-Controlador). Esto permitirá una separación clara de las responsabilidades y facilitará el mantenimiento y la escalabilidad del sistema.
 
+NqYMCFXBEQYYJ60u
+

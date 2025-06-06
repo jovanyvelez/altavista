@@ -2,11 +2,18 @@ from sqlalchemy import create_engine, UniqueConstraint, Index
 from sqlmodel import SQLModel, Session, create_engine as sqlmodel_create_engine
 from typing import Optional
 
+# Cambia aquí la cadena de conexión para usar PostgreSQL en vez de SQLite
+DATABASE_URL = "postgresql://postgres:NqYMCFXBEQYYJ60u@db.xnmealeoourdfcgsyfqv.supabase.co:5432/postgres"
+
+
+# NqYMCFXBEQYYJ60u
+
+engine = create_engine(DATABASE_URL, echo=True)
+
 class DatabaseManager:
-    def __init__(self, database_url: str = "sqlite:///./building_management.db"):
-        self.database_url = database_url
-        self.engine = sqlmodel_create_engine(database_url, echo=True)
-    
+    def __init__(self, engine):
+        self.engine = engine
+
     def create_tables(self):
         """Crear todas las tablas con constraints y índices"""
         # Importar todos los modelos para asegurar que estén registrados
@@ -84,4 +91,4 @@ class DatabaseManager:
         return self.engine
 
 # Instancia global del manager de base de datos
-db_manager = DatabaseManager()
+db_manager = DatabaseManager(engine)

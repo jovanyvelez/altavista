@@ -1,12 +1,12 @@
 from enum import Enum
 
 class RolUsuarioEnum(str, Enum):
-    ADMINISTRADOR = "administrador"
-    PROPIETARIO_CONSULTA = "propietario_consulta"
+    administrador = "administrador"
+    propietario_consulta = "propietario_consulta"
 
 class TipoMovimientoEnum(str, Enum):
-    DEBITO = "DEBITO"
-    CREDITO = "CREDITO"
+    CARGO = "cargo"
+    ABONO = "abono"
 
 class TipoItemPresupuestoEnum(str, Enum):
     INGRESO = "INGRESO"

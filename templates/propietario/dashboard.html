@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Mi Panel - Propietario{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1 class="h3 mb-4">
+                <i class="fas fa-home"></i> Bienvenido, {{ user.nombre_completo }}
+            </h1>
+        </div>
+    </div>
+
+    <!-- Información del propietario -->
+    <div class="row mb-4">
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-user"></i> Mi Información
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if propietario %}
+                    <p><strong>Nombre:</strong> {{ propietario.nombre_completo }}</p>
+                    <p><strong>Documento:</strong> {{ propietario.documento_identidad }}</p>
+                    <p><strong>Email:</strong> {{ propietario.email or "No registrado" }}</p>
+                    <p><strong>Teléfono:</strong> {{ propietario.telefono or "No registrado" }}</p>
+                    {% endif %}
+                    <button class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-edit"></i> Actualizar Datos
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-building"></i> Mis Apartamentos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if apartamentos %}
+                    <div class="row">
+                        {% for apartamento in apartamentos %}
+                        <div class="col-md-6 mb-3">
+                            <div class="card border-primary">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-home"></i> {{ apartamento.identificador }}
+                                    </h6>
+                                    <p class="card-text">
+                                        <small class="text-muted">
+                                            Coeficiente: {{ apartamento.coeficiente_copropiedad }}%
+                                        </small>
+                                    </p>
+                                    <div class="d-grid gap-2">
+                                        <a href="/propietario/estado-cuenta?apartamento={{ apartamento.id }}" class="btn btn-outline-primary btn-sm">
+                                            <i class="fas fa-file-invoice"></i> Ver Estado de Cuenta
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-home fa-3x text-muted mb-3"></i>
+                        <p class="text-muted">No tienes apartamentos asignados.</p>
+                        <p class="text-muted">Contacta al administrador si esto es un error.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen financiero -->
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line"></i> Resumen Financiero
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h4 class="text-success">$0.00</h4>
+                                <small class="text-muted">Saldo a Favor</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h4 class="text-danger">$0.00</h4>
+                                <small class="text-muted">Saldo Pendiente</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h4 class="text-warning">$0.00</h4>
+                                <small class="text-muted">Cuota Actual</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-3">
+                                <h4 class="text-info">$0.00</h4>
+                                <small class="text-muted">Total Pagado</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bell"></i> Notificaciones
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Información:</strong> No tienes pagos pendientes.
+                    </div>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-calendar"></i>
+                        <strong>Recordatorio:</strong> La cuota de junio vence el 30 de junio.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accesos rápidos -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-bolt"></i> Accesos Rápidos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <a href="/propietario/estado-cuenta" class="btn btn-outline-primary w-100 p-3">
+                                <i class="fas fa-file-invoice fa-2x d-block mb-2"></i>
+                                Estado de<br>Cuenta
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="#" class="btn btn-outline-success w-100 p-3">
+                                <i class="fas fa-credit-card fa-2x d-block mb-2"></i>
+                                Realizar<br>Pago
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="#" class="btn btn-outline-info w-100 p-3">
+                                <i class="fas fa-file-download fa-2x d-block mb-2"></i>
+                                Descargar<br>Extractos
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="#" class="btn btn-outline-warning w-100 p-3">
+                                <i class="fas fa-question-circle fa-2x d-block mb-2"></i>
+                                Soporte<br>Técnico
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

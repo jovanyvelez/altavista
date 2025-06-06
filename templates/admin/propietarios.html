@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Propietarios{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-triangle"></i> {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">
+            <i class="fas fa-users"></i> Gestión de Propietarios
+        </h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoPropietario">
+            <i class="fas fa-plus"></i> Nuevo Propietario
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre Completo</th>
+                            <th>Documento</th>
+                            <th>Email</th>
+                            <th>Teléfono</th>
+                            <th>Apartamentos</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for propietario in propietarios %}
+                        <tr>
+                            <td>{{ propietario.id }}</td>
+                            <td>
+                                <strong>{{ propietario.nombre_completo }}</strong>
+                            </td>
+                            <td>{{ propietario.documento_identidad }}</td>
+                            <td>
+                                {% if propietario.email %}
+                                    <a href="mailto:{{ propietario.email }}">{{ propietario.email }}</a>
+                                {% else %}
+                                    <span class="text-muted">No registrado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if propietario.telefono %}
+                                    {{ propietario.telefono }}
+                                {% else %}
+                                    <span class="text-muted">No registrado</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-info">
+                                    {{ propietario.apartamentos|length if propietario.apartamentos else 0 }}
+                                </span>
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            onclick="editarPropietario({{ propietario.id }}, '{{ propietario.nombre_completo }}', '{{ propietario.documento_identidad }}', '{{ propietario.email or '' }}', '{{ propietario.telefono or '' }}')"
+                                            title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            onclick="eliminarPropietario({{ propietario.id }}, '{{ propietario.nombre_completo }}')"
+                                            title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Propietario -->
+<div class="modal fade" id="modalNuevoPropietario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-plus"></i> Nuevo Propietario
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="/admin/propietarios/crear">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="nombre_completo" class="form-label">Nombre Completo *</label>
+                        <input type="text" class="form-control" name="nombre_completo" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="documento_identidad" class="form-label">Documento de Identidad *</label>
+                        <input type="text" class="form-control" name="documento_identidad" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email">
+                    </div>
+                    <div class="mb-3">
+                        <label for="telefono" class="form-label">Teléfono</label>
+                        <input type="tel" class="form-control" name="telefono">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Propietario -->
+<div class="modal fade" id="modalEditarPropietario" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-user-edit"></i> Editar Propietario
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="formEditarPropietario">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_nombre_completo" class="form-label">Nombre Completo *</label>
+                        <input type="text" class="form-control" name="nombre_completo" id="edit_nombre_completo" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_documento_identidad" class="form-label">Documento de Identidad *</label>
+                        <input type="text" class="form-control" name="documento_identidad" id="edit_documento_identidad" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_email" class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="edit_email">
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_telefono" class="form-label">Teléfono</label>
+                        <input type="tel" class="form-control" name="telefono" id="edit_telefono">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Actualizar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editarPropietario(id, nombre, documento, email, telefono) {
+    document.getElementById('edit_nombre_completo').value = nombre;
+    document.getElementById('edit_documento_identidad').value = documento;
+    document.getElementById('edit_email').value = email;
+    document.getElementById('edit_telefono').value = telefono;
+    document.getElementById('formEditarPropietario').action = `/admin/propietarios/${id}/editar`;
+    
+    var modal = new bootstrap.Modal(document.getElementById('modalEditarPropietario'));
+    modal.show();
+}
+
+function eliminarPropietario(id, nombre) {
+    if (confirm(`¿Está seguro de eliminar al propietario "${nombre}"?\n\nEsta acción no se puede deshacer.`)) {
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = `/admin/propietarios/${id}/eliminar`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

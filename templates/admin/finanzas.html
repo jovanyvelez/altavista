@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión Financiera{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="h3 mb-4">
+        <i class="fas fa-calculator"></i> Gestión Financiera
+    </h1>
+
+    <!-- Pestañas de navegación -->
+    <ul class="nav nav-tabs" id="financeTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="presupuesto-tab" data-bs-toggle="tab" data-bs-target="#presupuesto" type="button" role="tab">
+                <i class="fas fa-chart-line"></i> Presupuesto
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="conceptos-tab" data-bs-toggle="tab" data-bs-target="#conceptos" type="button" role="tab">
+                <i class="fas fa-tags"></i> Conceptos
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="cuotas-tab" data-bs-toggle="tab" data-bs-target="#cuotas" type="button" role="tab">
+                <i class="fas fa-money-bill"></i> Cuotas
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="gastos-tab" data-bs-toggle="tab" data-bs-target="#gastos" type="button" role="tab">
+                <i class="fas fa-receipt"></i> Gastos
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="informes-tab" data-bs-toggle="tab" data-bs-target="#informes" type="button" role="tab">
+                <i class="fas fa-file-alt"></i> Informes
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="financeTabsContent">
+        <!-- Tab Presupuesto -->
+        <div class="tab-pane fade show active" id="presupuesto" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line"></i> Presupuestos Anuales
+                    </h5>
+                    <div>
+                        <a href="/admin/presupuestos" class="btn btn-outline-primary btn-sm me-2">
+                            <i class="fas fa-list"></i> Ver Todos
+                        </a>
+                        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoPresupuesto">
+                            <i class="fas fa-plus"></i> Nuevo Presupuesto
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Año</th>
+                                    <th>Descripción</th>
+                                    <th>Total Ingresos</th>
+                                    <th>Total Gastos</th>
+                                    <th>Balance</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for presupuesto in presupuestos %}
+                                <tr>
+                                    <td><strong>{{ presupuesto.año }}</strong></td>
+                                    <td>{{ presupuesto.descripcion or "Sin descripción" }}</td>
+                                    <td class="text-success">$0.00</td>
+                                    <td class="text-danger">$0.00</td>
+                                    <td class="text-info">$0.00</td>
+                                    <td>
+                                        {% if presupuesto.año == 2025 %}
+                                            <span class="badge bg-success">Activo</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactivo</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="/admin/presupuestos/{{ presupuesto.id }}" class="btn btn-outline-primary" title="Ver Detalles">
+                                                <i class="fas fa-eye"></i>
+                                            </a>
+                                            <button class="btn btn-outline-success" title="Importar Excel">
+                                                <i class="fas fa-file-excel"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Conceptos -->
+        <div class="tab-pane fade" id="conceptos" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-tags"></i> Conceptos de Ingresos y Gastos
+                    </h5>
+                    <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalNuevoConcepto">
+                        <i class="fas fa-plus"></i> Nuevo Concepto
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Recurrente</th>
+                                    <th>Descripción</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for concepto in conceptos %}
+                                <tr>
+                                    <td><strong>{{ concepto.nombre }}</strong></td>
+                                    <td>
+                                        {% if concepto.es_ingreso_tipico %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-arrow-up"></i> Ingreso
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-arrow-down"></i> Gasto
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if concepto.es_recurrente_presupuesto %}
+                                            <i class="fas fa-check text-success"></i>
+                                        {% else %}
+                                            <i class="fas fa-times text-danger"></i>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ concepto.descripcion or "Sin descripción" }}</td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary" title="Editar">
+                                                <i class="fas fa-edit"></i>
+                                            </button>
+                                            <button class="btn btn-outline-danger" 
+                                                   onclick="eliminarConcepto({{ concepto.id }}, '{{ concepto.nombre }}')" 
+                                                   title="Eliminar">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Cuotas -->
+        <div class="tab-pane fade" id="cuotas" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-money-bill"></i> Configuración de Cuotas
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Cuotas Ordinarias Mensuales</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted">Configure los valores de las cuotas ordinarias mensuales por apartamento.</p>
+                                    <button class="btn btn-primary btn-sm">
+                                        <i class="fas fa-cog"></i> Configurar Cuotas
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">Tasas de Interés por Mora</h6>
+                                </div>
+                                <div class="card-body">
+                                    <p class="text-muted">Configure las tasas de interés aplicables a cuotas en mora.</p>
+                                    <button class="btn btn-warning btn-sm">
+                                        <i class="fas fa-percentage"></i> Configurar Tasas
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Gastos -->
+        <div class="tab-pane fade" id="gastos" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-receipt"></i> Registro de Gastos
+                    </h5>
+                    <button class="btn btn-primary btn-sm">
+                        <i class="fas fa-plus"></i> Registrar Gasto
+                    </button>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">Aquí se mostrarán los gastos registrados de la comunidad.</p>
+                    <div class="text-center py-4">
+                        <i class="fas fa-receipt fa-3x text-muted mb-3"></i>
+                        <p>No hay gastos registrados aún.</p>
+                        <button class="btn btn-outline-primary">
+                            <i class="fas fa-plus"></i> Registrar Primer Gasto
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Informes -->
+        <div class="tab-pane fade" id="informes" role="tabpanel">
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-file-alt"></i> Informes Financieros
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-chart-bar fa-2x text-primary mb-3"></i>
+                                    <h6>Estado de Cuentas</h6>
+                                    <p class="text-muted">Generar estado de cuenta por propietario</p>
+                                    <button class="btn btn-outline-primary btn-sm">Generar</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-chart-pie fa-2x text-success mb-3"></i>
+                                    <h6>Presupuesto vs Real</h6>
+                                    <p class="text-muted">Comparativo de gastos presupuestados vs reales</p>
+                                    <button class="btn btn-outline-success btn-sm">Generar</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-file-invoice fa-2x text-info mb-3"></i>
+                                    <h6>Cuotas en Mora</h6>
+                                    <p class="text-muted">Reporte de cuotas pendientes e intereses</p>
+                                    <button class="btn btn-outline-info btn-sm">Generar</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Concepto -->
+<div class="modal fade" id="modalNuevoConcepto" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-tag"></i> Nuevo Concepto
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="/admin/conceptos/crear">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="nombre" class="form-label">Nombre del Concepto *</label>
+                        <input type="text" class="form-control" id="nombre" name="nombre" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tipo de Concepto *</label>
+                        <div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="es_ingreso_tipico" id="ingreso" value="true">
+                                <label class="form-check-label" for="ingreso">
+                                    <span class="badge bg-success">Ingreso</span> - Típicamente genera ingresos para la comunidad
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="es_ingreso_tipico" id="gasto" value="false" checked>
+                                <label class="form-check-label" for="gasto">
+                                    <span class="badge bg-danger">Gasto</span> - Típicamente genera gastos para la comunidad
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Presupuesto -->
+<div class="modal fade" id="modalNuevoPresupuesto" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-chart-line"></i> Nuevo Presupuesto Anual
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="/admin/presupuestos/crear">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="año" class="form-label">Año *</label>
+                        <input type="number" class="form-control" name="año" id="año" min="2000" max="2100" value="{{ now().year }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción *</label>
+                        <input type="text" class="form-control" name="descripcion" id="descripcion" placeholder="Ej: Presupuesto anual operativo" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Crear Presupuesto
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function eliminarConcepto(id, nombre) {
+    if (confirm(`¿Está seguro de eliminar el concepto "${nombre}"?\n\nEsta acción no se puede deshacer.`)) {
+        var form = document.createElement('form');
+        form.method = 'post';
+        form.action = `/admin/conceptos/${id}/eliminar`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

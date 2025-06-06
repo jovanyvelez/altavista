@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+
+{% block title %}Gestión de Apartamentos{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-triangle"></i> {{ error }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3">
+            <i class="fas fa-home"></i> Gestión de Apartamentos
+        </h1>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalNuevoApartamento">
+            <i class="fas fa-plus"></i> Nuevo Apartamento
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Identificador</th>
+                            <th>Propietario</th>
+                            <th>Coeficiente</th>
+                            <th>Estado</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for apartamento in apartamentos %}
+                        <tr>
+                            <td>{{ apartamento.id }}</td>
+                            <td>
+                                <strong>{{ apartamento.identificador }}</strong>
+                            </td>
+                            <td>
+                                {% if apartamento.propietario %}
+                                    <span class="text-success">
+                                        <i class="fas fa-user"></i>
+                                        {{ apartamento.propietario.nombre_completo }}
+                                    </span>
+                                {% else %}
+                                    <span class="text-warning">
+                                        <i class="fas fa-exclamation-triangle"></i>
+                                        Sin propietario
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>{{ apartamento.coeficiente_copropiedad }}%</td>
+                            <td>
+                                {% if apartamento.propietario %}
+                                    <span class="badge bg-success">Ocupado</span>
+                                {% else %}
+                                    <span class="badge bg-warning">Disponible</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-sm btn-outline-primary" 
+                                            onclick="editarApartamento({{ apartamento.id }}, '{{ apartamento.identificador }}', {{ apartamento.coeficiente_copropiedad }}, {{ apartamento.propietario_id or 'null' }})"
+                                            title="Editar">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    <a href="/admin/registros-financieros/{{ apartamento.id }}" 
+                                       class="btn btn-sm btn-outline-success"
+                                       title="Estado Financiero">
+                                        <i class="fas fa-file-invoice-dollar"></i>
+                                    </a>
+                                    <button class="btn btn-sm btn-outline-danger" 
+                                            onclick="eliminarApartamento({{ apartamento.id }}, '{{ apartamento.identificador }}')"
+                                            title="Eliminar">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumen estadístico -->
+    <div class="row mt-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-primary">{{ apartamentos|length }}</h5>
+                    <p class="card-text">Total Apartamentos</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-success">
+                        {{ apartamentos|selectattr("propietario")|list|length }}
+                    </h5>
+                    <p class="card-text">Con Propietario</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-warning">
+                        {{ apartamentos|rejectattr("propietario")|list|length }}
+                    </h5>
+                    <p class="card-text">Sin Propietario</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h5 class="card-title text-info">
+                        {{ "%.4f"|format(apartamentos|sum(attribute="coeficiente_copropiedad")) }}%
+                    </h5>
+                    <p class="card-text">Total Coeficientes</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Nuevo Apartamento -->
+<div class="modal fade" id="modalNuevoApartamento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-home"></i> Nuevo Apartamento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="/admin/apartamentos/crear">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="identificador" class="form-label">Identificador *</label>
+                        <input type="text" class="form-control" name="identificador" placeholder="Ej: Apto 101, Bloque A-202" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="coeficiente_copropiedad" class="form-label">Coeficiente de Copropiedad *</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="coeficiente_copropiedad" step="0.000001" required>
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <div class="form-text">Porcentaje de participación en las zonas comunes</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="propietario_id" class="form-label">Propietario (Opcional)</label>
+                        <select class="form-select" name="propietario_id">
+                            <option value="">Seleccionar propietario...</option>
+                            {% for propietario in propietarios %}
+                            <option value="{{ propietario.id }}">{{ propietario.nombre_completo }} ({{ propietario.documento_identidad }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Guardar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Editar Apartamento -->
+<div class="modal fade" id="modalEditarApartamento" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit"></i> Editar Apartamento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" id="formEditarApartamento">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="edit_identificador" class="form-label">Identificador *</label>
+                        <input type="text" class="form-control" name="identificador" id="edit_identificador" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_coeficiente_copropiedad" class="form-label">Coeficiente de Copropiedad *</label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" name="coeficiente_copropiedad" id="edit_coeficiente_copropiedad" step="0.000001" required>
+                            <span class="input-group-text">%</span>
+                        </div>
+                        <div class="form-text">Porcentaje de participación en las zonas comunes</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_propietario_id" class="form-label">Propietario (Opcional)</label>
+                        <select class="form-select" name="propietario_id" id="edit_propietario_id">
+                            <option value="">Seleccionar propietario...</option>
+                            {% for propietario in propietarios %}
+                            <option value="{{ propietario.id }}">{{ propietario.nombre_completo }} ({{ propietario.documento_identidad }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Actualizar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function editarApartamento(id, identificador, coeficiente, propietario_id) {
+    document.getElementById('edit_identificador').value = identificador;
+    document.getElementById('edit_coeficiente_copropiedad').value = coeficiente;
+    
+    // Establecer el propietario seleccionado
+    const selectPropietario = document.getElementById('edit_propietario_id');
+    if (propietario_id && propietario_id !== 'null') {
+        for (let i = 0; i < selectPropietario.options.length; i++) {
+            if (selectPropietario.options[i].value == propietario_id) {
+                selectPropietario.options[i].selected = true;
+                break;
+            }
+        }
+    } else {
+        selectPropietario.options[0].selected = true;
+    }
+    
+    document.getElementById('formEditarApartamento').action = `/admin/apartamentos/${id}/editar`;
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalEditarApartamento'));
+    modal.show();
+}
+
+function eliminarApartamento(id, identificador) {
+    if (confirm(`¿Está seguro de eliminar el apartamento "${identificador}"?\n\nEsta acción no se puede deshacer.`)) {
+        const form = document.createElement('form');
+        form.method = 'post';
+        form.action = `/admin/apartamentos/${id}/eliminar`;
+        document.body.appendChild(form);
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

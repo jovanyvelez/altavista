@@ -30,7 +30,9 @@ class ItemPresupuesto(SQLModel, table=True):
     mes: int = Field(ge=1, le=12)
     monto_presupuestado: Decimal = Field(decimal_places=2, max_digits=12)
     tipo_item: TipoItemPresupuestoEnum
+    #descripcion: Optional[str] = None
+    #fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
 
     # Relaciones
-    presupuesto_anual: PresupuestoAnual = Relationship(back_populates="items_presupuesto")
+    presupuesto_anual: "PresupuestoAnual" = Relationship(back_populates="items_presupuesto")
     concepto: "Concepto" = Relationship(back_populates="items_presupuesto")

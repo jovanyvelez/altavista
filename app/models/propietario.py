@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Field
+from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime
 from typing import Optional, List, TYPE_CHECKING
 
@@ -18,6 +18,6 @@ class Propietario(SQLModel, table=True):
     fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
     fecha_actualizacion: datetime = Field(default_factory=datetime.utcnow)
 
-    # Relaciones - se definen en los respectivos archivos para evitar importaciones circulares
-    # apartamentos: List["Apartamento"] = Relationship(back_populates="propietario")
-    # usuarios: List["Usuario"] = Relationship(back_populates="propietario")
+    # Relaciones
+    apartamentos: List["Apartamento"] = Relationship(back_populates="propietario")
+    usuarios: List["Usuario"] = Relationship(back_populates="propietario")
