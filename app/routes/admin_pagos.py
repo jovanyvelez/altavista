@@ -44,6 +44,32 @@ async def admin_pagos(
         apartamentos = session.exec(select(Apartamento)).all()
         total_apartamentos = len(apartamentos)
         
+        # Calcular total a recaudar basado en configuraciones
+        total_a_recaudar = 0
+        configuraciones_mes = session.exec(
+            select(CuotaConfiguracion)
+            .where(CuotaConfiguracion.mes == mes)
+            .where(CuotaConfiguracion.año == año)
+        ).all()
+        
+        # Si hay configuraciones específicas, usar esos montos
+        if configuraciones_mes:
+            total_a_recaudar = sum(config.monto_cuota_ordinaria_mensual for config in configuraciones_mes)
+        else:
+            # Si no hay configuraciones, usar un monto por defecto o buscar en meses anteriores
+            config_anterior = session.exec(
+                select(CuotaConfiguracion)
+                .order_by(CuotaConfiguracion.año.desc(), CuotaConfiguracion.mes.desc())
+                .limit(1)
+            ).first()
+            
+            if config_anterior:
+                # Usar el último monto configurado para todos los apartamentos
+                total_a_recaudar = config_anterior.monto_cuota_ordinaria_mensual * total_apartamentos
+            else:
+                # Valor por defecto si no hay configuraciones
+                total_a_recaudar = 100000.0 * total_apartamentos  # Monto por defecto por apartamento
+        
         # Obtener pagos realizados este mes
         pagos_mes = []
         total_recaudado = 0
@@ -55,7 +81,7 @@ async def admin_pagos(
             pagos_mes = session.exec(
                 select(RegistroFinancieroApartamento)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.ABONO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).all()
@@ -88,12 +114,15 @@ async def admin_pagos(
             recaudado_mes = session.exec(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.ABONO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes_calc)
                 .where(RegistroFinancieroApartamento.año_aplicable == año_calc)
             ).first() or 0
             
             recaudacion_data.insert(0, float(recaudado_mes))
+        
+        # Calcular porcentaje de recaudo basado en monto, no en número de apartamentos
+        porcentaje_recaudado = round((total_recaudado / total_a_recaudar * 100) if total_a_recaudar > 0 else 0, 1)
         
         return templates.TemplateResponse(
             "admin/pagos.html",
@@ -105,11 +134,16 @@ async def admin_pagos(
                 "apartamentos_pagados": apartamentos_pagados,
                 "apartamentos_pendientes": len(apartamentos_pendientes),
                 "total_recaudado": total_recaudado,
+                "total_a_recaudar": total_a_recaudar,
                 "porcentaje_recaudacion": round((apartamentos_pagados / total_apartamentos * 100) if total_apartamentos > 0 else 0, 1),
+                "porcentaje_recaudado": porcentaje_recaudado,
                 "apartamentos_pendientes_lista": apartamentos_pendientes,
                 "pagos_mes": pagos_mes,
                 "meses_labels": meses_labels,
-                "recaudacion_data": recaudacion_data
+                "recaudacion_data": recaudacion_data,
+                "apartamentos_configurados": len(configuraciones_mes),
+                "apartamentos_con_cargo": len(configuraciones_mes),
+                "concepto_cuota": concepto_cuota
             }
         )
 
@@ -147,7 +181,11 @@ async def admin_pagos_configuracion(
                 "apartamentos": apartamentos,
                 "configuraciones": config_dict,
                 "mes_actual": mes,
-                "año_actual": año
+                "año_actual": año,
+                "meses": [
+                    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
+                ]
             }
         )
 
@@ -186,8 +224,7 @@ async def guardar_configuracion_cuotas(
                     apartamento_id=apartamento.id,
                     mes=mes,
                     año=año,
-                    monto_cuota=montos[i],
-                    fecha_creacion=datetime.now()
+                    monto_cuota_ordinaria_mensual=montos[i]
                 )
                 session.add(nueva_config)
         
@@ -212,13 +249,22 @@ async def admin_pagos_generar_cargos(request: Request):
             .where(CuotaConfiguracion.año == año_actual)
         ).all()
         
+        # Obtener conceptos relacionados con cuotas
+        conceptos_cuota = session.exec(
+            select(Concepto).where(
+                Concepto.nombre.ilike("%cuota%") | 
+                Concepto.nombre.ilike("%administr%")
+            )
+        ).all()
+        
         return templates.TemplateResponse(
             "admin/pagos_generar_cargos.html",
             {
                 "request": request,
                 "mes_actual": mes_actual,
                 "año_actual": año_actual,
-                "configuraciones_disponibles": len(configuraciones)
+                "configuraciones_disponibles": len(configuraciones),
+                "conceptos_cuota": conceptos_cuota
             }
         )
 
@@ -258,7 +304,7 @@ async def generar_cargos_automaticos(
         cargos_existentes = session.exec(
             select(RegistroFinancieroApartamento)
             .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CARGO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
             .where(RegistroFinancieroApartamento.mes_aplicable == mes)
             .where(RegistroFinancieroApartamento.año_aplicable == año)
         ).first()
@@ -277,8 +323,8 @@ async def generar_cargos_automaticos(
             nuevo_cargo = RegistroFinancieroApartamento(
                 apartamento_id=config.apartamento_id,
                 concepto_id=concepto_cuota.id,
-                tipo_movimiento=TipoMovimientoEnum.CARGO,
-                monto=config.monto_cuota,
+                tipo_movimiento=TipoMovimientoEnum.DEBITO,
+                monto=config.monto_cuota_ordinaria_mensual,
                 fecha_efectiva=fecha_cargo,
                 mes_aplicable=mes,
                 año_aplicable=año,
@@ -306,12 +352,38 @@ async def admin_pagos_procesar(request: Request):
             select(Concepto).where(Concepto.nombre.ilike("%cuota%ordinaria%administr%"))
         ).first()
         
+        # Calcular saldos para cada apartamento
+        apartamentos_con_saldo = []
+        for apartamento in apartamentos:
+            # Obtener registros financieros del apartamento
+            registros = session.exec(
+                select(RegistroFinancieroApartamento)
+                .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
+            ).all()
+            
+            # Calcular totales
+            total_cargos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.CARGO])
+            total_abonos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.ABONO])
+            saldo_total = total_cargos - total_abonos
+            
+            # Agregar información del apartamento con saldo
+            apartamento_info = {
+                'id': apartamento.id,
+                'numero': apartamento.numero,
+                'propietario': apartamento.propietario,
+                'saldo_total': saldo_total,
+                'total_cargos': total_cargos,
+                'total_abonos': total_abonos
+            }
+            apartamentos_con_saldo.append(apartamento_info)
+        
         return templates.TemplateResponse(
             "admin/pagos_procesar.html",
             {
                 "request": request,
                 "apartamentos": apartamentos,
-                "concepto_cuota": concepto_cuota
+                "concepto_cuota": concepto_cuota,
+                "apartamentos_con_saldo": apartamentos_con_saldo
             }
         )
 
@@ -343,7 +415,7 @@ async def procesar_pago_individual(
         nuevo_pago = RegistroFinancieroApartamento(
             apartamento_id=apartamento_id,
             concepto_id=concepto_cuota.id,
-            tipo_movimiento=TipoMovimientoEnum.ABONO,
+            tipo_movimiento=TipoMovimientoEnum.CREDITO,
             monto=monto,
             fecha_efectiva=fecha_pago,
             mes_aplicable=mes_aplicable,
@@ -393,7 +465,7 @@ async def admin_pagos_reportes(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CARGO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).first() or 0
@@ -403,7 +475,7 @@ async def admin_pagos_reportes(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.ABONO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).first() or 0

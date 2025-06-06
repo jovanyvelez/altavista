@@ -34,13 +34,13 @@ async def propietario_dashboard(request: Request):
         total_cargos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
             .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CARGO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
         ).first() or 0
         
         total_abonos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
             .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.ABONO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
         ).first() or 0
         
         saldo_actual = float(total_abonos) - float(total_cargos)
@@ -87,11 +87,11 @@ async def propietario_estado_cuenta(request: Request):
         # Calcular totales
         total_cargos = sum(
             r.monto for r in registros 
-            if r.tipo_movimiento == TipoMovimientoEnum.CARGO
+            if r.tipo_movimiento == TipoMovimientoEnum.DEBITO
         )
         total_abonos = sum(
             r.monto for r in registros 
-            if r.tipo_movimiento == TipoMovimientoEnum.ABONO
+            if r.tipo_movimiento == TipoMovimientoEnum.CREDITO
         )
         saldo_actual = total_abonos - total_cargos
         
@@ -144,7 +144,7 @@ async def propietario_mis_pagos(
             if key not in pagos_por_mes:
                 pagos_por_mes[key] = {"cargos": 0, "pagos": 0, "registros": []}
             
-            if pago.tipo_movimiento == TipoMovimientoEnum.CARGO:
+            if pago.tipo_movimiento == TipoMovimientoEnum.DEBITO:
                 pagos_por_mes[key]["cargos"] += pago.monto
             else:
                 pagos_por_mes[key]["pagos"] += pago.monto
@@ -153,10 +153,16 @@ async def propietario_mis_pagos(
         
         # Calcular estado de cada mes
         estados_mensuales = []
+        total_cargos_general = 0
+        total_abonos_general = 0
+        
         for mes_año, data in sorted(pagos_por_mes.items(), reverse=True):
             año, mes = mes_año.split("-")
             saldo = data["pagos"] - data["cargos"]
             estado = "Pagado" if saldo >= 0 else "Pendiente"
+            
+            total_cargos_general += data["cargos"]
+            total_abonos_general += data["pagos"]
             
             estados_mensuales.append({
                 "mes": int(mes),
@@ -169,13 +175,26 @@ async def propietario_mis_pagos(
                 "registros": data["registros"]
             })
         
+        # Calcular saldo total
+        saldo_total = total_cargos_general - total_abonos_general
+        
+        # Crear diccionario de estados de pago por mes
+        estados_pago = {}
+        for estado in estados_mensuales:
+            key = estado["mes"]
+            estados_pago[key] = "pagado" if estado["saldo"] >= 0 else "pendiente"
+        
         return templates.TemplateResponse("propietario/mis_pagos.html", {
             "request": request,
             "propietario": propietario,
             "apartamento": apartamento,
             "estados_mensuales": estados_mensuales,
             "reporte_enviado": reporte_enviado,
-            "concepto_cuota": concepto_cuota
+            "concepto_cuota": concepto_cuota,
+            "saldo_total": saldo_total,
+            "total_cargos": total_cargos_general,
+            "total_abonos": total_abonos_general,
+            "estados_pago": estados_pago
         })
 
 @router.post("/reportar-pago")
@@ -211,7 +230,7 @@ async def reportar_pago(
         reporte_pago = RegistroFinancieroApartamento(
             apartamento_id=apartamento.id,
             concepto_id=concepto_cuota.id,
-            tipo_movimiento=TipoMovimientoEnum.ABONO,
+            tipo_movimiento=TipoMovimientoEnum.CREDITO,
             monto=monto_reportado,
             fecha_efectiva=datetime.strptime(fecha_pago_reportado, "%Y-%m-%d").date(),
             mes_aplicable=datetime.now().month,

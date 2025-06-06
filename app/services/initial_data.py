@@ -62,7 +62,8 @@ async def crear_datos_iniciales():
                         rol=RolUsuarioEnum.PROPIETARIO
                     ),
                     "propietario": Propietario(
-                        nombre="María García",
+                        nombre_completo="María García",
+                        documento_identidad="12345678",
                         telefono="123456789",
                         email="maria@email.com"
                     ),
@@ -77,7 +78,8 @@ async def crear_datos_iniciales():
                         rol=RolUsuarioEnum.PROPIETARIO
                     ),
                     "propietario": Propietario(
-                        nombre="Juan Pérez",
+                        nombre_completo="Juan Pérez",
+                        documento_identidad="87654321",
                         telefono="987654321",
                         email="juan@email.com"
                     ),

@@ -23,7 +23,7 @@ async def login(
             select(Usuario).where(Usuario.username == username)
         ).first()
         
-        if not user or user.password != password:
+        if not user or user.hashed_password != password:
             return templates.TemplateResponse(
                 "login.html", 
                 {

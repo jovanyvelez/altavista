@@ -30,21 +30,30 @@ async def admin_dashboard(request: Request):
             select(func.count(Apartamento.id)).where(Apartamento.propietario_id.isnot(None))
         ).first() or 0
         
+        apartamentos_sin_propietario = total_apartamentos - apartamentos_ocupados
+        
         # Registros financieros del mes actual
         mes_actual = datetime.now().month
         año_actual = datetime.now().year
         
         total_ingresos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.ABONO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
             .where(RegistroFinancieroApartamento.mes_aplicable == mes_actual)
             .where(RegistroFinancieroApartamento.año_aplicable == año_actual)
         ).first() or 0
         
+        # Crear objeto stats con todas las estadísticas que necesita el template
+        stats = {
+            "total_apartamentos": total_apartamentos,
+            "total_propietarios": total_propietarios,
+            "apartamentos_sin_propietario": apartamentos_sin_propietario,
+            "fecha_actual": datetime.now().strftime("%d/%m/%Y")
+        }
+        
         return templates.TemplateResponse("admin/dashboard.html", {
             "request": request,
-            "total_propietarios": total_propietarios,
-            "total_apartamentos": total_apartamentos,
+            "stats": stats,
             "apartamentos_ocupados": apartamentos_ocupados,
             "porcentaje_ocupacion": round((apartamentos_ocupados / total_apartamentos * 100) if total_apartamentos > 0 else 0, 1),
             "total_ingresos": total_ingresos
@@ -108,7 +117,7 @@ async def admin_finanzas(request: Request):
 @router.post("/propietarios/crear")
 async def crear_propietario(
     request: Request,
-    nombre: str = Form(...),
+    nombre_completo: str = Form(...),
     email: str = Form(...),
     telefono: str = Form(...),
     documento_identidad: str = Form(...),
@@ -133,7 +142,7 @@ async def crear_propietario(
         nuevo_usuario = Usuario(
             username=username,
             password=password,
-            nombre_completo=nombre,
+            nombre_completo=nombre_completo,
             email=email,
             rol=RolUsuarioEnum.PROPIETARIO
         )
@@ -143,7 +152,7 @@ async def crear_propietario(
         
         # Crear propietario
         nuevo_propietario = Propietario(
-            nombre=nombre,
+            nombre_completo=nombre_completo,
             email=email,
             telefono=telefono,
             documento_identidad=documento_identidad,
@@ -170,7 +179,7 @@ async def crear_propietario(
 async def editar_propietario(
     propietario_id: int,
     request: Request,
-    nombre: str = Form(...),
+    nombre_completo: str = Form(...),
     email: str = Form(...),
     telefono: str = Form(...),
     documento_identidad: str = Form(...),
@@ -183,7 +192,7 @@ async def editar_propietario(
             raise HTTPException(status_code=404, detail="Propietario no encontrado")
         
         # Actualizar datos del propietario
-        propietario.nombre = nombre
+        propietario.nombre_completo = nombre_completo
         propietario.email = email
         propietario.telefono = telefono
         propietario.documento_identidad = documento_identidad
@@ -192,7 +201,7 @@ async def editar_propietario(
         if propietario.usuario_id:
             usuario = session.get(Usuario, propietario.usuario_id)
             if usuario:
-                usuario.nombre_completo = nombre
+                usuario.nombre_completo = nombre_completo
                 usuario.email = email
                 session.add(usuario)
         
@@ -439,11 +448,11 @@ async def ver_registros_apartamento(apartamento_id: int, request: Request):
         # Calcular totales
         total_cargos = sum(
             r.monto for r in registros 
-            if r.tipo_movimiento == TipoMovimientoEnum.CARGO
+            if r.tipo_movimiento == TipoMovimientoEnum.DEBITO
         )
         total_abonos = sum(
             r.monto for r in registros 
-            if r.tipo_movimiento == TipoMovimientoEnum.ABONO
+            if r.tipo_movimiento == TipoMovimientoEnum.CREDITO
         )
         saldo = total_abonos - total_cargos
         
