@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración de Cuotas Ordinarias{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-cog"></i> Configuración de Cuotas Ordinarias - {{ año_actual }}
+        </h1>
+        <div class="btn-group">
+            <a href="/admin/pagos" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Volver a Pagos
+            </a>
+            <button type="button" class="btn btn-outline-info" onclick="aplicarCuotaUniforme()">
+                <i class="fas fa-equals"></i> Aplicar Cuota Uniforme
+            </button>
+            <button type="button" class="btn btn-outline-warning" onclick="copiarConfiguracionAnterior()">
+                <i class="fas fa-copy"></i> Copiar Año Anterior
+            </button>
+        </div>
+    </div>
+
+    <!-- Alertas -->
+    {% if request.query_params.get('success') %}
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="fas fa-check-circle"></i> Configuración guardada exitosamente.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <!-- Formulario de Configuración -->
+    <form method="post" action="/admin/pagos/configuracion/guardar" id="formConfiguracion">
+        <input type="hidden" name="año" value="{{ año_actual }}">
+        
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-table"></i> Configuración Mensual por Apartamento
+                </h5>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-save"></i> Guardar Configuración
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Apartamento</th>
+                                <th>Propietario</th>
+                                <th>Coeficiente</th>
+                                {% for mes in meses %}
+                                <th class="text-center">{{ mes[:3] }}</th>
+                                {% endfor %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for apartamento in apartamentos %}
+                            <tr>
+                                <td class="fw-bold">{{ apartamento.identificador }}</td>
+                                <td>
+                                    {% if apartamento.propietario %}
+                                        {{ apartamento.propietario.nombre_completo }}
+                                    {% else %}
+                                        <span class="text-muted">Sin propietario</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-info">{{ "%.3f"|format(apartamento.coeficiente_copropiedad) }}</span>
+                                </td>
+                                {% for i in range(1, 13) %}
+                                <td class="text-center">
+                                    {% set config = configuraciones.get(i, {}).get(apartamento.id) %}
+                                    <input type="number" 
+                                           class="form-control form-control-sm text-end cuota-input" 
+                                           name="cuota_{{ apartamento.id }}_{{ i }}"
+                                           value="{{ config.monto_cuota_ordinaria_mensual if config else '' }}"
+                                           step="0.01"
+                                           min="0"
+                                           data-apartamento="{{ apartamento.id }}"
+                                           data-mes="{{ i }}"
+                                           data-coeficiente="{{ apartamento.coeficiente_copropiedad }}"
+                                           placeholder="0.00">
+                                </td>
+                                {% endfor %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        <tfoot class="table-secondary">
+                            <tr>
+                                <td colspan="3" class="fw-bold">Total por Mes:</td>
+                                {% for i in range(1, 13) %}
+                                <td class="text-center">
+                                    <span class="fw-bold total-mes" id="total-mes-{{ i }}">$0.00</span>
+                                </td>
+                                {% endfor %}
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </form>
+
+    <!-- Información Adicional -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-lightbulb"></i> Consejos de Configuración
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <i class="fas fa-check-circle text-success"></i>
+                            Use el coeficiente de copropiedad como base para calcular cuotas proporcionales
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-info-circle text-info"></i>
+                            Las cuotas se pueden ajustar mensualmente según las necesidades
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-calculator text-warning"></i>
+                            Los totales mensuales se calculan automáticamente
+                        </li>
+                        <li>
+                            <i class="fas fa-save text-primary"></i>
+                            Recuerde guardar los cambios antes de salir
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> Estadísticas de Configuración
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h4 id="apartamentos-configurados">0</h4>
+                                <small class="text-muted">Apartamentos Configurados</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center">
+                                <h4 id="promedio-cuota">$0.00</h4>
+                                <small class="text-muted">Cuota Promedio</small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="progress">
+                        <div class="progress-bar" role="progressbar" style="width: 0%" id="progreso-config">
+                            0%
+                        </div>
+                    </div>
+                    <small class="text-muted">Progreso de configuración</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para Cuota Uniforme -->
+<div class="modal fade" id="modalCuotaUniforme" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-equals"></i> Aplicar Cuota Uniforme
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Monto de la Cuota</label>
+                    <input type="number" class="form-control" id="montoUniforme" step="0.01" min="0" placeholder="0.00">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Aplicar a los Meses:</label>
+                    <div class="row">
+                        {% for i in range(1, 13) %}
+                        <div class="col-6 col-md-4">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="mes{{ i }}" value="{{ i }}" checked>
+                                <label class="form-check-label" for="mes{{ i }}">
+                                    {{ meses[i-1] }}
+                                </label>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" onclick="aplicarCuotaUniformeConfirmar()">
+                    <i class="fas fa-check"></i> Aplicar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Calcular totales por mes
+function calcularTotales() {
+    for (let mes = 1; mes <= 12; mes++) {
+        let total = 0;
+        let inputs = document.querySelectorAll(`input[data-mes="${mes}"]`);
+        
+        inputs.forEach(input => {
+            let valor = parseFloat(input.value) || 0;
+            total += valor;
+        });
+        
+        document.getElementById(`total-mes-${mes}`).textContent = `$${total.toFixed(2)}`;
+    }
+    
+    actualizarEstadisticas();
+}
+
+// Actualizar estadísticas
+function actualizarEstadisticas() {
+    let apartamentosConfiguratos = 0;
+    let totalCuotas = 0;
+    let contadorCuotas = 0;
+    
+    document.querySelectorAll('.cuota-input').forEach(input => {
+        let valor = parseFloat(input.value) || 0;
+        if (valor > 0) {
+            contadorCuotas++;
+            totalCuotas += valor;
+            
+            // Verificar si el apartamento tiene al menos una cuota configurada
+            let apartamentoId = input.dataset.apartamento;
+            let apartamentoInputs = document.querySelectorAll(`input[data-apartamento="${apartamentoId}"]`);
+            let tieneAlgunaCuota = Array.from(apartamentoInputs).some(inp => parseFloat(inp.value) > 0);
+            
+            if (tieneAlgunaCuota) {
+                // Contar solo una vez por apartamento
+            }
+        }
+    });
+    
+    // Contar apartamentos únicos con configuración
+    let apartamentosUnicos = new Set();
+    document.querySelectorAll('.cuota-input').forEach(input => {
+        let valor = parseFloat(input.value) || 0;
+        if (valor > 0) {
+            apartamentosUnicos.add(input.dataset.apartamento);
+        }
+    });
+    
+    apartamentosConfiguratos = apartamentosUnicos.size;
+    let totalApartamentos = {{ apartamentos|length }};
+    let promedio = contadorCuotas > 0 ? totalCuotas / contadorCuotas : 0;
+    let progreso = (apartamentosConfiguratos / totalApartamentos) * 100;
+    
+    document.getElementById('apartamentos-configurados').textContent = apartamentosConfiguratos;
+    document.getElementById('promedio-cuota').textContent = `$${promedio.toFixed(2)}`;
+    document.getElementById('progreso-config').style.width = `${progreso}%`;
+    document.getElementById('progreso-config').textContent = `${progreso.toFixed(0)}%`;
+}
+
+// Aplicar cuota uniforme
+function aplicarCuotaUniforme() {
+    $('#modalCuotaUniforme').modal('show');
+}
+
+function aplicarCuotaUniformeConfirmar() {
+    let monto = parseFloat(document.getElementById('montoUniforme').value) || 0;
+    let mesesSeleccionados = [];
+    
+    for (let i = 1; i <= 12; i++) {
+        if (document.getElementById(`mes${i}`).checked) {
+            mesesSeleccionados.push(i);
+        }
+    }
+    
+    if (monto <= 0) {
+        alert('Por favor ingrese un monto válido');
+        return;
+    }
+    
+    if (mesesSeleccionados.length === 0) {
+        alert('Por favor seleccione al menos un mes');
+        return;
+    }
+    
+    // Aplicar el monto a todos los apartamentos en los meses seleccionados
+    mesesSeleccionados.forEach(mes => {
+        document.querySelectorAll(`input[data-mes="${mes}"]`).forEach(input => {
+            input.value = monto.toFixed(2);
+        });
+    });
+    
+    calcularTotales();
+    $('#modalCuotaUniforme').modal('hide');
+}
+
+// Copiar configuración del año anterior
+function copiarConfiguracionAnterior() {
+    if (confirm('¿Está seguro de copiar la configuración del año anterior? Esto sobrescribirá los valores actuales.')) {
+        // Aquí implementarías la lógica para copiar del año anterior
+        // Por simplicidad, mostraremos un mensaje
+        alert('Funcionalidad disponible próximamente. Contacte al administrador del sistema.');
+    }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', function() {
+    // Calcular totales al cargar
+    calcularTotales();
+    
+    // Escuchar cambios en los inputs
+    document.querySelectorAll('.cuota-input').forEach(input => {
+        input.addEventListener('input', calcularTotales);
+    });
+    
+    // Formatear números al perder el foco
+    document.querySelectorAll('.cuota-input').forEach(input => {
+        input.addEventListener('blur', function() {
+            let valor = parseFloat(this.value) || 0;
+            this.value = valor.toFixed(2);
+        });
+    });
+});
+
+// Guardar con confirmación
+document.getElementById('formConfiguracion').addEventListener('submit', function(e) {
+    let configurados = document.getElementById('apartamentos-configurados').textContent;
+    let total = {{ apartamentos|length }};
+    
+    if (parseInt(configurados) < total) {
+        if (!confirm(`Solo ${configurados} de ${total} apartamentos están configurados. ¿Desea continuar?`)) {
+            e.preventDefault();
+        }
+    }
+});
+</script>
+{% endblock %}

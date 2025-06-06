@@ -8,7 +8,7 @@ DATABASE_URL = "postgresql://postgres:NqYMCFXBEQYYJ60u@db.xnmealeoourdfcgsyfqv.s
 
 # NqYMCFXBEQYYJ60u
 
-engine = create_engine(DATABASE_URL, echo=True)
+engine = create_engine(DATABASE_URL, echo=False)
 
 class DatabaseManager:
     def __init__(self, engine):

@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block title %}Reportes de Pagos{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-chart-line"></i> Reportes y Análisis de Pagos
+        </h1>
+        <a href="/admin/pagos" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Pagos
+        </a>
+    </div>
+
+    <!-- Filtros de Reporte -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-filter"></i> Filtros de Análisis
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label for="año_reporte" class="form-label">Año</label>
+                        <select class="form-select" id="año_reporte" onchange="actualizarReporte()">
+                            {% for año in range(año_actual - 2, año_actual + 2) %}
+                            <option value="{{ año }}" {% if año == año_actual %}selected{% endif %}>{{ año }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label for="mes_reporte" class="form-label">Mes</label>
+                        <select class="form-select" id="mes_reporte" onchange="actualizarReporte()">
+                            <option value="">Todos los meses</option>
+                            {% for i in range(1, 13) %}
+                            <option value="{{ i }}" {% if i == mes_actual %}selected{% endif %}>
+                                {{ ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][i] }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label for="tipo_reporte" class="form-label">Tipo de Reporte</label>
+                        <select class="form-select" id="tipo_reporte" onchange="actualizarReporte()">
+                            <option value="general">General</option>
+                            <option value="mora">Análisis de Mora</option>
+                            <option value="recaudacion">Recaudación</option>
+                            <option value="comparativo">Comparativo Anual</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="mb-3">
+                        <label class="form-label">&nbsp;</label>
+                        <div class="d-grid">
+                            <button class="btn btn-primary" onclick="generarReporte()">
+                                <i class="fas fa-chart-bar"></i> Generar Reporte
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estadísticas Generales -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Recaudado {{ año_actual }}</h6>
+                            <h2 class="mb-0">${{ "%.2f"|format(total_recaudado_año) }}</h2>
+                        </div>
+                        <i class="fas fa-dollar-sign fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">% Recaudación</h6>
+                            <h2 class="mb-0">{{ "%.1f"|format(porcentaje_recaudacion) }}%</h2>
+                        </div>
+                        <i class="fas fa-percentage fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">En Mora</h6>
+                            <h2 class="mb-0">{{ apartamentos_en_mora }}</h2>
+                        </div>
+                        <i class="fas fa-exclamation-triangle fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-danger">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="card-title">Total Pendiente</h6>
+                            <h2 class="mb-0">${{ "%.2f"|format(total_pendiente) }}</h2>
+                        </div>
+                        <i class="fas fa-clock fa-2x opacity-75"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos y Análisis -->
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line"></i> Evolución de Recaudación {{ año_actual }}
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="graficoRecaudacion" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> Estado de Pagos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="graficoEstado" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Análisis Mensual -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-table"></i> Análisis Mensual {{ año_actual }}
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Mes</th>
+                            <th>Cargos Generados</th>
+                            <th>Monto Esperado</th>
+                            <th>Pagos Recibidos</th>
+                            <th>Monto Recaudado</th>
+                            <th>% Recaudación</th>
+                            <th>Pendiente</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mes_data in analisis_mensual %}
+                        <tr>
+                            <td class="fw-bold">{{ mes_data.nombre_mes }}</td>
+                            <td class="text-center">{{ mes_data.cargos_generados }}</td>
+                            <td class="text-end">${{ "%.2f"|format(mes_data.monto_esperado) }}</td>
+                            <td class="text-center">{{ mes_data.pagos_recibidos }}</td>
+                            <td class="text-end text-success">${{ "%.2f"|format(mes_data.monto_recaudado) }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ 'success' if mes_data.porcentaje_recaudacion >= 80 else 'warning' if mes_data.porcentaje_recaudacion >= 60 else 'danger' }}">
+                                    {{ "%.1f"|format(mes_data.porcentaje_recaudacion) }}%
+                                </span>
+                            </td>
+                            <td class="text-end text-danger">${{ "%.2f"|format(mes_data.monto_pendiente) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot class="table-secondary">
+                        <tr class="fw-bold">
+                            <td>TOTAL</td>
+                            <td class="text-center">{{ total_cargos_año }}</td>
+                            <td class="text-end">${{ "%.2f"|format(total_esperado_año) }}</td>
+                            <td class="text-center">{{ total_pagos_año }}</td>
+                            <td class="text-end text-success">${{ "%.2f"|format(total_recaudado_año) }}</td>
+                            <td class="text-center">
+                                <span class="badge bg-{{ 'success' if porcentaje_recaudacion >= 80 else 'warning' if porcentaje_recaudacion >= 60 else 'danger' }} fs-6">
+                                    {{ "%.1f"|format(porcentaje_recaudacion) }}%
+                                </span>
+                            </td>
+                            <td class="text-end text-danger">${{ "%.2f"|format(total_pendiente) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Deudores -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-exclamation-triangle"></i> Top 10 Apartamentos con Mayor Deuda
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Apartamento</th>
+                            <th>Propietario</th>
+                            <th>Deuda Total</th>
+                            <th>Meses en Mora</th>
+                            <th>Último Pago</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in top_deudores %}
+                        <tr>
+                            <td>{{ loop.index }}</td>
+                            <td>{{ item.apartamento.identificador }}</td>
+                            <td>
+                                {% if item.apartamento.propietario %}
+                                    {{ item.apartamento.propietario.nombre }} {{ item.apartamento.propietario.apellido }}
+                                {% else %}
+                                    <span class="text-muted">Sin propietario</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <span class="badge bg-danger fs-6">${{ "%.2f"|format(item.deuda_total) }}</span>
+                            </td>
+                            <td class="text-center">{{ item.meses_mora }}</td>
+                            <td>
+                                {% if item.ultimo_pago %}
+                                    {{ item.ultimo_pago.strftime("%d/%m/%Y") }}
+                                {% else %}
+                                    <span class="text-muted">Nunca</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <a href="/admin/registros-financieros/{{ item.apartamento.id }}" 
+                                       class="btn btn-outline-primary" title="Ver Estado de Cuenta">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <button type="button" 
+                                            class="btn btn-outline-success" 
+                                            onclick="procesarPago({{ item.apartamento.id }})"
+                                            title="Procesar Pago">
+                                        <i class="fas fa-dollar-sign"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Botones de Exportación -->
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-download"></i> Exportar Reportes
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <button class="btn btn-outline-success w-100" onclick="exportarExcel()">
+                        <i class="fas fa-file-excel"></i> Exportar a Excel
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-danger w-100" onclick="exportarPDF()">
+                        <i class="fas fa-file-pdf"></i> Generar PDF
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-primary w-100" onclick="imprimirReporte()">
+                        <i class="fas fa-print"></i> Imprimir
+                    </button>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-outline-info w-100" onclick="enviarEmail()">
+                        <i class="fas fa-envelope"></i> Enviar por Email
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Datos para los gráficos
+const datosRecaudacion = {
+    labels: [
+        'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+    ],
+    datasets: [{
+        label: 'Esperado',
+        data: {{ monto_esperado_mensual|safe }},
+        borderColor: 'rgb(255, 99, 132)',
+        backgroundColor: 'rgba(255, 99, 132, 0.2)',
+        tension: 0.1
+    }, {
+        label: 'Recaudado',
+        data: {{ monto_recaudado_mensual|safe }},
+        borderColor: 'rgb(54, 162, 235)',
+        backgroundColor: 'rgba(54, 162, 235, 0.2)',
+        tension: 0.1
+    }]
+};
+
+const datosEstado = {
+    labels: ['Al Día', 'En Mora', 'Crítico'],
+    datasets: [{
+        data: [{{ apartamentos_al_dia }}, {{ apartamentos_en_mora }}, {{ apartamentos_criticos }}],
+        backgroundColor: [
+            'rgba(40, 167, 69, 0.8)',
+            'rgba(255, 193, 7, 0.8)',
+            'rgba(220, 53, 69, 0.8)'
+        ],
+        borderColor: [
+            'rgba(40, 167, 69, 1)',
+            'rgba(255, 193, 7, 1)',
+            'rgba(220, 53, 69, 1)'
+        ],
+        borderWidth: 1
+    }]
+};
+
+// Configurar gráficos
+const configRecaudacion = {
+    type: 'line',
+    data: datosRecaudacion,
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Recaudación vs Esperado por Mes'
+            },
+            legend: {
+                position: 'top',
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    callback: function(value) {
+                        return '$' + value.toLocaleString();
+                    }
+                }
+            }
+        }
+    }
+};
+
+const configEstado = {
+    type: 'doughnut',
+    data: datosEstado,
+    options: {
+        responsive: true,
+        plugins: {
+            title: {
+                display: true,
+                text: 'Estado de Pagos por Apartamento'
+            },
+            legend: {
+                position: 'bottom',
+            }
+        }
+    }
+};
+
+// Inicializar gráficos
+window.addEventListener('load', function() {
+    const ctxRecaudacion = document.getElementById('graficoRecaudacion').getContext('2d');
+    new Chart(ctxRecaudacion, configRecaudacion);
+    
+    const ctxEstado = document.getElementById('graficoEstado').getContext('2d');
+    new Chart(ctxEstado, configEstado);
+});
+
+// Funciones de reportes
+function actualizarReporte() {
+    const año = document.getElementById('año_reporte').value;
+    const mes = document.getElementById('mes_reporte').value;
+    const tipo = document.getElementById('tipo_reporte').value;
+    
+    // Recargar página con nuevos parámetros
+    let url = '/admin/pagos/reportes?año=' + año;
+    if (mes) url += '&mes=' + mes;
+    if (tipo !== 'general') url += '&tipo=' + tipo;
+    
+    window.location.href = url;
+}
+
+function generarReporte() {
+    // Mostrar loading
+    alert('Generando reporte...');
+}
+
+function exportarExcel() {
+    alert('Función de exportación a Excel en desarrollo');
+}
+
+function exportarPDF() {
+    alert('Función de exportación a PDF en desarrollo');
+}
+
+function imprimirReporte() {
+    window.print();
+}
+
+function enviarEmail() {
+    alert('Función de envío por email en desarrollo');
+}
+
+function procesarPago(apartamentoId) {
+    window.location.href = '/admin/pagos/procesar';
+}
+</script>
+{% endblock %}

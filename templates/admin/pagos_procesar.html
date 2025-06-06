@@ -1,0 +1,390 @@
+{% extends "base.html" %}
+
+{% block title %}Procesar Pagos de Cuotas{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-hand-holding-usd"></i> Procesar Pagos de Cuotas Ordinarias
+        </h1>
+        <a href="/admin/pagos" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Pagos
+        </a>
+    </div>
+
+    <!-- Alertas -->
+    {% if request.query_params.get('success') %}
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="fas fa-check-circle"></i> Pago procesado exitosamente.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <!-- Resumen -->
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-pie"></i> Resumen de Apartamentos con Saldos Pendientes
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-3">
+                            <h3 class="text-danger">{{ apartamentos_con_saldo|length }}</h3>
+                            <small class="text-muted">Apartamentos con Saldo</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-warning">${{ "%.2f"|format(apartamentos_con_saldo|sum(attribute='saldo_total')) }}</h3>
+                            <small class="text-muted">Total Pendiente</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-info">${{ "%.2f"|format((apartamentos_con_saldo|sum(attribute='saldo_total')) / (apartamentos_con_saldo|length) if apartamentos_con_saldo else 0) }}</h3>
+                            <small class="text-muted">Saldo Promedio</small>
+                        </div>
+                        <div class="col-md-3">
+                            <h3 class="text-primary">{{ apartamentos_con_saldo|selectattr('saldo_total', '>', 1000)|list|length }}</h3>
+                            <small class="text-muted">Saldos > $1,000</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Listado de Apartamentos con Saldos -->
+    {% if apartamentos_con_saldo %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">
+                <i class="fas fa-list"></i> Apartamentos con Saldos Pendientes
+            </h5>
+            <div class="btn-group">
+                <button type="button" class="btn btn-outline-info btn-sm" onclick="filtrarSaldos('todos')">
+                    Todos ({{ apartamentos_con_saldo|length }})
+                </button>
+                <button type="button" class="btn btn-outline-warning btn-sm" onclick="filtrarSaldos('alto')">
+                    Saldo Alto ({{ apartamentos_con_saldo|selectattr('saldo_total', '>', 1000)|list|length }})
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm" onclick="filtrarSaldos('critico')">
+                    Crítico ({{ apartamentos_con_saldo|selectattr('saldo_total', '>', 2000)|list|length }})
+                </button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="tablaApartamentos">
+                    <thead>
+                        <tr>
+                            <th>Apartamento</th>
+                            <th>Propietario</th>
+                            <th class="text-end">Saldo Total</th>
+                            <th>Cargos Pendientes</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in apartamentos_con_saldo %}
+                        <tr data-saldo="{{ item.saldo_total }}" class="fila-apartamento">
+                            <td>
+                                <strong class="fs-5">{{ item.apartamento.identificador }}</strong>
+                                <br>
+                                <small class="text-muted">Coef: {{ "%.3f"|format(item.apartamento.coeficiente_copropiedad) }}</small>
+                            </td>
+                            <td>
+                                {% if item.apartamento.propietario %}
+                                    <div>
+                                        <strong>{{ item.apartamento.propietario.nombre_completo }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="fas fa-envelope"></i> {{ item.apartamento.propietario.email }}
+                                            <br>
+                                            <i class="fas fa-phone"></i> {{ item.apartamento.propietario.telefono }}
+                                        </small>
+                                    </div>
+                                {% else %}
+                                    <span class="text-muted">Sin propietario asignado</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <span class="badge bg-danger fs-6">${{ "%.2f"|format(item.saldo_total) }}</span>
+                            </td>
+                            <td>
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for cargo in item.cargos_pendientes[:3] %}
+                                    <span class="badge bg-warning">
+                                        {{ ["", "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"][cargo.mes_aplicable] }} {{ cargo.año_aplicable }}
+                                    </span>
+                                    {% endfor %}
+                                    {% if item.cargos_pendientes|length > 3 %}
+                                    <span class="badge bg-secondary">+{{ item.cargos_pendientes|length - 3 }} más</span>
+                                    {% endif %}
+                                </div>
+                                <small class="text-muted">{{ item.cargos_pendientes|length }} período(s) pendiente(s)</small>
+                            </td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button type="button" 
+                                            class="btn btn-success" 
+                                            onclick="procesarPago({{ item.apartamento.id }}, '{{ item.apartamento.identificador }}', {{ item.saldo_total }})"
+                                            title="Procesar Pago">
+                                        <i class="fas fa-dollar-sign"></i>
+                                    </button>
+                                    <a href="/admin/registros-financieros/{{ item.apartamento.id }}" 
+                                       class="btn btn-outline-primary" 
+                                       title="Ver Movimientos">
+                                        <i class="fas fa-eye"></i>
+                                    </a>
+                                    <button type="button" 
+                                            class="btn btn-outline-info" 
+                                            onclick="verDetalles({{ item.apartamento.id }})"
+                                            title="Ver Detalles">
+                                        <i class="fas fa-info-circle"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-check-circle fa-4x text-success mb-3"></i>
+            <h4 class="text-success">¡Excelente!</h4>
+            <p class="text-muted">No hay apartamentos con saldos pendientes de cuotas ordinarias.</p>
+            <a href="/admin/pagos" class="btn btn-primary">
+                <i class="fas fa-arrow-left"></i> Volver al Panel de Pagos
+            </a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Modal Procesar Pago -->
+<div class="modal fade" id="modalProcesarPago" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-dollar-sign"></i> Procesar Pago - Apartamento <span id="apartamentoModal"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="post" action="/admin/pagos/procesar" id="formProcesarPago">
+                <div class="modal-body">
+                    <input type="hidden" name="apartamento_id" id="apartamentoId">
+                    <input type="hidden" name="concepto_id" value="{{ concepto_cuota.id if concepto_cuota }}">
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="monto_pago" class="form-label">Monto del Pago *</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">$</span>
+                                    <input type="number" 
+                                           class="form-control" 
+                                           name="monto_pago" 
+                                           id="monto_pago" 
+                                           step="0.01" 
+                                           min="0.01" 
+                                           required>
+                                </div>
+                                <small class="text-muted">Saldo pendiente: $<span id="saldoPendiente"></span></small>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="fecha_pago" class="form-label">Fecha del Pago *</label>
+                                <input type="date" 
+                                       class="form-control" 
+                                       name="fecha_pago" 
+                                       id="fecha_pago" 
+                                       value="{{ now().strftime('%Y-%m-%d') }}" 
+                                       required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="mes_aplicable" class="form-label">Mes Aplicable *</label>
+                                <select class="form-select" name="mes_aplicable" id="mes_aplicable" required>
+                                    <option value="">Seleccionar mes...</option>
+                                    {% for i in range(1, 13) %}
+                                    <option value="{{ i }}">
+                                        {{ ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][i] }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="año_aplicable" class="form-label">Año Aplicable *</label>
+                                <select class="form-select" name="año_aplicable" id="año_aplicable" required>
+                                    {% for i in range(2020, 2030) %}
+                                    <option value="{{ i }}" {% if i == now().year %}selected{% endif %}>{{ i }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="referencia_pago" class="form-label">Referencia de Pago</label>
+                        <input type="text" 
+                               class="form-control" 
+                               name="referencia_pago" 
+                               id="referencia_pago" 
+                               placeholder="Ej: Transferencia, Cheque #1234, etc.">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="descripcion" class="form-label">Descripción Adicional</label>
+                        <textarea class="form-control" 
+                                  name="descripcion" 
+                                  id="descripcion" 
+                                  rows="2" 
+                                  placeholder="Información adicional sobre el pago..."></textarea>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Información:</strong> Este pago se registrará como un abono en el estado de cuenta del apartamento.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-success">
+                        <i class="fas fa-save"></i> Procesar Pago
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Ver Detalles -->
+<div class="modal fade" id="modalVerDetalles" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-info-circle"></i> Detalles del Apartamento
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="contenidoDetalles">
+                <!-- Se carga dinámicamente -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Procesar pago
+function procesarPago(apartamentoId, apartamentoIdentificador, saldoTotal) {
+    document.getElementById('apartamentoId').value = apartamentoId;
+    document.getElementById('apartamentoModal').textContent = apartamentoIdentificador;
+    document.getElementById('saldoPendiente').textContent = saldoTotal.toFixed(2);
+    document.getElementById('monto_pago').value = saldoTotal.toFixed(2);
+    
+    $('#modalProcesarPago').modal('show');
+}
+
+// Ver detalles
+function verDetalles(apartamentoId) {
+    // Aquí cargarías los detalles del apartamento vía AJAX
+    document.getElementById('contenidoDetalles').innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Cargando...</span>
+            </div>
+            <p class="mt-2">Cargando detalles...</p>
+        </div>
+    `;
+    
+    $('#modalVerDetalles').modal('show');
+    
+    // Simular carga de datos
+    setTimeout(() => {
+        document.getElementById('contenidoDetalles').innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                Funcionalidad en desarrollo. Próximamente mostrará:
+            </div>
+            <ul>
+                <li>Historial completo de cargos y pagos</li>
+                <li>Información detallada del propietario</li>
+                <li>Estadísticas de pago</li>
+                <li>Cargos pendientes por período</li>
+                <li>Opciones de contacto</li>
+            </ul>
+        `;
+    }, 1000);
+}
+
+// Filtrar saldos
+function filtrarSaldos(tipo) {
+    const filas = document.querySelectorAll('.fila-apartamento');
+    
+    filas.forEach(fila => {
+        const saldo = parseFloat(fila.dataset.saldo);
+        let mostrar = false;
+        
+        switch(tipo) {
+            case 'todos':
+                mostrar = true;
+                break;
+            case 'alto':
+                mostrar = saldo > 1000;
+                break;
+            case 'critico':
+                mostrar = saldo > 2000;
+                break;
+        }
+        
+        fila.style.display = mostrar ? '' : 'none';
+    });
+    
+    // Actualizar botones activos
+    document.querySelectorAll('.btn-group .btn').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+
+// Validación del formulario
+document.getElementById('formProcesarPago').addEventListener('submit', function(e) {
+    const monto = parseFloat(document.getElementById('monto_pago').value);
+    const saldo = parseFloat(document.getElementById('saldoPendiente').textContent);
+    
+    if (monto > saldo) {
+        if (!confirm('El monto del pago es mayor al saldo pendiente. ¿Desea continuar?')) {
+            e.preventDefault();
+        }
+    }
+});
+
+// Auto-completar descripción basada en mes/año
+document.getElementById('mes_aplicable').addEventListener('change', actualizarDescripcion);
+document.getElementById('año_aplicable').addEventListener('change', actualizarDescripcion);
+
+function actualizarDescripcion() {
+    const mes = document.getElementById('mes_aplicable').value;
+    const año = document.getElementById('año_aplicable').value;
+    
+    if (mes && año) {
+        const nombreMes = document.querySelector(`#mes_aplicable option[value="${mes}"]`).textContent;
+        document.getElementById('descripcion').value = `Pago cuota ordinaria ${nombreMes} ${año}`;
+    }
+}
+</script>
+{% endblock %}

@@ -19,7 +19,7 @@ app = FastAPI(
 )
 
 # Agregar middleware de sesiones
-app.add_middleware(SessionMiddleware, secret_key="building-management-secret-key-2024")
+app.add_middleware(SessionMiddleware, secret_key="tu_clave_secreta_aqui")
 
 # Configurar archivos estáticos
 app.mount("/static", StaticFiles(directory=settings.STATIC_DIR), name="static")

@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Generar Cargos Automáticos{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-plus-circle"></i> Generar Cargos Automáticos
+        </h1>
+        <a href="/admin/pagos" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Volver a Pagos
+        </a>
+    </div>
+
+    <!-- Alertas -->
+    {% if request.query_params.get('success') %}
+    <div class="alert alert-success alert-dismissible fade show">
+        <i class="fas fa-check-circle"></i> 
+        Cargos generados exitosamente. 
+        {% if request.query_params.get('generados') %}
+            <strong>{{ request.query_params.get('generados') }} nuevos cargos</strong> generados.
+        {% endif %}
+        {% if request.query_params.get('actualizados') %}
+            <strong>{{ request.query_params.get('actualizados') }} cargos</strong> actualizados.
+        {% endif %}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    {% if request.query_params.get('error') == 'no_config' %}
+    <div class="alert alert-warning alert-dismissible fade show">
+        <i class="fas fa-exclamation-triangle"></i> 
+        No se encontraron configuraciones de cuotas para el período seleccionado. 
+        <a href="/admin/pagos/configuracion" class="alert-link">Configure las cuotas primero</a>.
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cog"></i> Configuración de Generación
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="post" action="/admin/pagos/generar-cargos" id="formGenerarCargos">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="año" class="form-label">Año *</label>
+                                    <select class="form-select" name="año" id="año" required>
+                                        {% for i in range(año_actual - 2, año_actual + 3) %}
+                                        <option value="{{ i }}" {% if i == año_actual %}selected{% endif %}>{{ i }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="mes" class="form-label">Mes *</label>
+                                    <select class="form-select" name="mes" id="mes" required>
+                                        {% for i in range(1, 13) %}
+                                        <option value="{{ i }}" {% if i == mes_actual %}selected{% endif %}>
+                                            {{ ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][i] }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="concepto_id" class="form-label">Concepto de Cuota *</label>
+                            <select class="form-select" name="concepto_id" id="concepto_id" required>
+                                <option value="">Seleccionar concepto...</option>
+                                {% for concepto in conceptos_cuota %}
+                                <option value="{{ concepto.id }}">{{ concepto.nombre }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">
+                                Seleccione el concepto contable que se usará para los cargos.
+                                {% if not conceptos_cuota %}
+                                <span class="text-warning">
+                                    <i class="fas fa-exclamation-triangle"></i> 
+                                    No hay conceptos de cuota configurados. 
+                                    <a href="/admin/finanzas#conceptos">Crear concepto</a>
+                                </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="sobrescribir" id="sobrescribir" value="true">
+                                <label class="form-check-label" for="sobrescribir">
+                                    <strong>Sobrescribir cargos existentes</strong>
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                Si ya existen cargos para el período seleccionado, marque esta opción para actualizarlos con los nuevos montos.
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <button type="button" class="btn btn-outline-info" onclick="previsualizarCargos()">
+                                    <i class="fas fa-eye"></i> Previsualizar Cargos
+                                </button>
+                            </div>
+                            <div>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-play"></i> Generar Cargos
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Área de Previsualización -->
+            <div class="card mt-4" id="previsualizacion" style="display: none;">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-eye"></i> Previsualización de Cargos
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div id="contenido-previsualizacion">
+                        <!-- Se carga dinámicamente -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <!-- Información del Sistema -->
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-info-circle"></i> Información
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <h6>¿Qué hace esta función?</h6>
+                    <ul class="list-unstyled mb-3">
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success"></i>
+                            Genera automáticamente los cargos de cuota ordinaria para todos los apartamentos configurados
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success"></i>
+                            Utiliza los montos configurados en la matriz de cuotas
+                        </li>
+                        <li class="mb-2">
+                            <i class="fas fa-check text-success"></i>
+                            Crea registros financieros de tipo "CARGO" en el sistema
+                        </li>
+                        <li>
+                            <i class="fas fa-check text-success"></i>
+                            Los cargos quedan listos para recibir pagos
+                        </li>
+                    </ul>
+
+                    <div class="alert alert-warning">
+                        <small>
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <strong>Importante:</strong> Asegúrese de que las cuotas estén correctamente configuradas antes de generar los cargos.
+                        </small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estadísticas -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-chart-bar"></i> Estado Actual
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Mes Actual:</span>
+                            <strong>{{ ["", "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][mes_actual] }} {{ año_actual }}</strong>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Conceptos Disponibles:</span>
+                            <span class="badge bg-info">{{ conceptos_cuota|length }}</span>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="d-grid gap-2">
+                        <a href="/admin/pagos/configuracion" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-cog"></i> Configurar Cuotas
+                        </a>
+                        <a href="/admin/finanzas#conceptos" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-tags"></i> Gestionar Conceptos
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Últimas Generaciones -->
+            <div class="card mt-3">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-history"></i> Proceso de Generación
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <ol class="list-unstyled mb-0">
+                        <li class="mb-2">
+                            <span class="badge bg-secondary">1</span>
+                            Configurar cuotas por apartamento
+                        </li>
+                        <li class="mb-2">
+                            <span class="badge bg-secondary">2</span>
+                            Crear concepto contable
+                        </li>
+                        <li class="mb-2">
+                            <span class="badge bg-warning">3</span>
+                            <strong>Generar cargos automáticos</strong>
+                        </li>
+                        <li class="mb-2">
+                            <span class="badge bg-secondary">4</span>
+                            Procesar pagos recibidos
+                        </li>
+                        <li>
+                            <span class="badge bg-secondary">5</span>
+                            Generar reportes
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function previsualizarCargos() {
+    const año = document.getElementById('año').value;
+    const mes = document.getElementById('mes').value;
+    const concepto_id = document.getElementById('concepto_id').value;
+    
+    if (!año || !mes || !concepto_id) {
+        alert('Por favor complete todos los campos requeridos');
+        return;
+    }
+    
+    // Aquí harías una llamada AJAX para obtener la previsualización
+    // Por simplicidad, mostraremos un mensaje estático
+    document.getElementById('contenido-previsualizacion').innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle"></i>
+            Previsualización para ${document.querySelector('#mes option:checked').text} ${año}
+        </div>
+        <p>Esta funcionalidad se implementará para mostrar:</p>
+        <ul>
+            <li>Cantidad de apartamentos que recibirán cargos</li>
+            <li>Monto total a cargar</li>
+            <li>Listado detallado por apartamento</li>
+            <li>Cargos existentes que serán sobrescritos (si aplica)</li>
+        </ul>
+    `;
+    
+    document.getElementById('previsualizacion').style.display = 'block';
+}
+
+// Validación del formulario
+document.getElementById('formGenerarCargos').addEventListener('submit', function(e) {
+    const año = document.getElementById('año').value;
+    const mes = document.getElementById('mes').value;
+    const concepto_id = document.getElementById('concepto_id').value;
+    const sobrescribir = document.getElementById('sobrescribir').checked;
+    
+    if (!concepto_id) {
+        alert('Por favor seleccione un concepto de cuota');
+        e.preventDefault();
+        return;
+    }
+    
+    let mensaje = `¿Está seguro de generar los cargos para ${document.querySelector('#mes option:checked').text} ${año}?`;
+    
+    if (sobrescribir) {
+        mensaje += '\n\nADVERTENCIA: Los cargos existentes serán sobrescritos.';
+    }
+    
+    if (!confirm(mensaje)) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}
