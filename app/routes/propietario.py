@@ -25,6 +25,7 @@ async def propietario_dashboard(request: Request):
         if not apartamento:
             return templates.TemplateResponse("propietario/dashboard.html", {
                 "request": request,
+                "user": user,
                 "propietario": propietario,
                 "apartamento": None,
                 "error": "No tiene apartamento asignado"
@@ -55,6 +56,7 @@ async def propietario_dashboard(request: Request):
         
         return templates.TemplateResponse("propietario/dashboard.html", {
             "request": request,
+            "user": user,
             "propietario": propietario,
             "apartamento": apartamento,
             "total_cargos": total_cargos,

@@ -49,10 +49,15 @@ def require_propietario(request: Request) -> tuple[Usuario, Propietario]:
             detail="Requiere permisos de propietario"
         )
     
+    # Verificar que el usuario tenga propietario_id
+    if not user.propietario_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Usuario no está asociado a ningún propietario"
+        )
+    
     with get_db_session() as session:
-        propietario = session.exec(
-            select(Propietario).where(Propietario.usuario_id == user.id)
-        ).first()
+        propietario = session.get(Propietario, user.propietario_id)
         
         if not propietario:
             raise HTTPException(

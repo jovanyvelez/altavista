@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-import uvicorn
+from contextlib import asynccontextmanager
+
 
 # Importar configuración y servicios
 from app.config import settings
@@ -11,11 +12,22 @@ from app.services.initial_data import crear_datos_iniciales
 # Importar rutas
 from app.routes import auth_router, admin_router, admin_pagos_router, propietario_router
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Inicializar base de datos y datos de prueba"""
+    db_manager.create_tables()
+    await crear_datos_iniciales()
+    yield
+    """Limpieza al cerrar la aplicación"""
+    pass
+
 # Crear la aplicación FastAPI
 app = FastAPI(
     title=settings.APP_TITLE,
     description=settings.APP_DESCRIPTION,
-    version=settings.APP_VERSION
+    version=settings.APP_VERSION,
+    lifespan=lifespan
 )
 
 # Agregar middleware de sesiones
@@ -31,15 +43,6 @@ app.include_router(admin_pagos_router)
 app.include_router(propietario_router)
 
 # Eventos de inicio y cierre
-@app.on_event("startup")
-async def startup_event():
-    """Inicializar base de datos y datos de prueba"""
-    db_manager.create_tables()
-    await crear_datos_iniciales()
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Limpieza al cerrar la aplicación"""
-    pass
 
 
