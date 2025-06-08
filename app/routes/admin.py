@@ -38,7 +38,7 @@ async def admin_dashboard(request: Request):
         
         total_ingresos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
             .where(RegistroFinancieroApartamento.mes_aplicable == mes_actual)
             .where(RegistroFinancieroApartamento.año_aplicable == año_actual)
         ).first() or 0
@@ -463,7 +463,8 @@ async def ver_registros_apartamento(apartamento_id: int, request: Request):
             "conceptos": conceptos,
             "total_cargos": total_cargos,
             "total_abonos": total_abonos,
-            "saldo": saldo
+            "saldo_total": saldo,
+            "now": datetime.now()
         })
 
 @router.post("/registros-financieros/crear")

@@ -2,6 +2,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List, TYPE_CHECKING
+from sqlalchemy import Enum as SQLEnum
 from .enums import TipoItemPresupuestoEnum
 
 if TYPE_CHECKING:
@@ -29,7 +30,9 @@ class ItemPresupuesto(SQLModel, table=True):
     concepto_id: int = Field(foreign_key="concepto.id")
     mes: int = Field(ge=1, le=12)
     monto_presupuestado: Decimal = Field(decimal_places=2, max_digits=12)
-    tipo_item: TipoItemPresupuestoEnum
+    tipo_item: TipoItemPresupuestoEnum = Field(
+        sa_column=SQLEnum(TipoItemPresupuestoEnum, name="tipo_item_presupuesto_enum")
+    )
     #descripcion: Optional[str] = None
     #fecha_creacion: datetime = Field(default_factory=datetime.utcnow)
 

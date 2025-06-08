@@ -11,6 +11,7 @@ from .tasa_interes_mora import TasaInteresMora
 from .registro_financiero_apartamento import RegistroFinancieroApartamento
 from .gasto_comunidad import GastoComunidad
 from .usuario import Usuario
+from .control_procesamiento import ControlProcesamientoMensual
 
 # Importaciones de utilidades de base de datos
 from .database import db_manager, DatabaseManager
@@ -32,6 +33,7 @@ __all__ = [
     "RegistroFinancieroApartamento",
     "GastoComunidad",
     "Usuario",
+    "ControlProcesamientoMensual",
     
     # Database utilities
     "db_manager",

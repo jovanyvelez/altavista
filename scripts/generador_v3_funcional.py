@@ -1,0 +1,397 @@
+#!/usr/bin/env python3
+"""
+Generador Automático de Cargos Financieros - Versión 3 Corregida
+===============================================================
+
+Versión simplificada y funcional que resuelve los problemas de SQLModel
+con un enfoque más directo y confiable.
+
+✅ Generación automática de cuotas ordinarias  
+✅ Cálculo automático de intereses moratorios
+✅ Control de duplicados
+✅ Manejo correcto de enums
+✅ Logging y auditoría
+
+Ejecutar: 
+  python scripts/generador_v3_funcional.py [año] [mes] [forzar]
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Agregar el directorio raíz del proyecto al path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from sqlmodel import create_engine, Session, select, text
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+import logging
+from typing import Dict
+
+# Importaciones del proyecto
+from app.models.database import DATABASE_URL
+from app.models import (
+    Apartamento, Concepto, CuotaConfiguracion, 
+    TasaInteresMora, RegistroFinancieroApartamento,
+    ControlProcesamientoMensual
+)
+from app.models.enums import TipoMovimientoEnum
+
+
+class GeneradorAutomaticoV3:
+    """
+    Generador automático mejorado y funcional.
+    """
+    
+    def __init__(self):
+        self.engine = create_engine(DATABASE_URL)
+        self.logger = self._setup_logger()
+        
+    def _setup_logger(self):
+        """Configurar logging para auditoría"""
+        logging.basicConfig(level=logging.INFO)
+        return logging.getLogger(__name__)
+    
+    def procesar_mes(self, año: int, mes: int, forzar: bool = False) -> Dict:
+        """
+        Procesa cuotas e intereses para un mes específico.
+        """
+        resultado = {
+            'año': año,
+            'mes': mes,
+            'cuotas_generadas': 0,
+            'intereses_generados': 0,
+            'monto_cuotas': Decimal('0.00'),
+            'monto_intereses': Decimal('0.00'),
+            'errores': [],
+            'ya_procesado': False
+        }
+        
+        inicio = datetime.now()
+        
+        with Session(self.engine) as session:
+            try:
+                # 1. Verificar si ya se procesó
+                if not forzar and self._verificar_procesado(session, año, mes):
+                    resultado['ya_procesado'] = True
+                    self.logger.info(f"Mes {mes:02d}/{año} ya procesado")
+                    return resultado
+                
+                # 2. Procesar cuotas ordinarias
+                self.logger.info(f"Generando cuotas ordinarias para {mes:02d}/{año}")
+                resultado_cuotas = self._generar_cuotas_ordinarias(session, año, mes)
+                resultado.update(resultado_cuotas)
+                
+                # 3. Procesar intereses moratorios
+                self.logger.info(f"Generando intereses moratorios para {mes:02d}/{año}")
+                resultado_intereses = self._generar_intereses_moratorios(session, año, mes)
+                resultado['intereses_generados'] = resultado_intereses['intereses_generados']
+                resultado['monto_intereses'] = resultado_intereses['monto_intereses']
+                
+                # 4. Confirmar cambios
+                session.commit()
+                
+                # 5. Marcar como procesado
+                self._marcar_procesado(session, año, mes, resultado)
+                
+                tiempo_total = datetime.now() - inicio
+                self.logger.info(
+                    f"Procesamiento completado en {tiempo_total.total_seconds():.2f}s: "
+                    f"{resultado['cuotas_generadas']} cuotas (${resultado['monto_cuotas']:,.2f}), "
+                    f"{resultado['intereses_generados']} intereses (${resultado['monto_intereses']:,.2f})"
+                )
+                
+            except Exception as e:
+                session.rollback()
+                error_msg = f"Error procesando {mes:02d}/{año}: {str(e)}"
+                resultado['errores'].append(error_msg)
+                self.logger.error(error_msg, exc_info=True)
+        
+        return resultado
+    
+    def _verificar_procesado(self, session: Session, año: int, mes: int) -> bool:
+        """Verifica si el mes ya fue procesado completamente"""
+        # Usar SQLModel para esta consulta simple
+        stmt = select(ControlProcesamientoMensual).where(
+            ControlProcesamientoMensual.año == año,
+            ControlProcesamientoMensual.mes == mes,
+            ControlProcesamientoMensual.estado == 'COMPLETADO'
+        )
+        
+        controles = session.exec(stmt).all()
+        
+        # Verificar que existan controles para cuotas e intereses
+        tipos_completados = {control.tipo_procesamiento for control in controles}
+        return ('CUOTAS' in tipos_completados and 'INTERESES' in tipos_completados)
+    
+    def _generar_cuotas_ordinarias(self, session: Session, año: int, mes: int) -> Dict:
+        """Genera las cuotas ordinarias usando SQL directo para evitar problemas de enum"""
+        resultado = {
+            'cuotas_generadas': 0,
+            'monto_cuotas': Decimal('0.00')
+        }
+        
+        # Usar SQL directo con formato de string para evitar problemas de parámetros
+        sql_query = f"""
+            INSERT INTO registro_financiero_apartamento 
+            (apartamento_id, concepto_id, fecha_efectiva, monto, 
+             tipo_movimiento, descripcion_adicional, mes_aplicable, año_aplicable)
+            SELECT 
+                cc.apartamento_id,
+                1,  -- ID del concepto 'Cuota Ordinaria Administración'
+                DATE('{año}' || '-' || LPAD('{mes}'::text, 2, '0') || '-05'),  -- Día 5 de cada mes
+                cc.monto_cuota_ordinaria_mensual,
+                'DEBITO'::tipo_movimiento_enum,
+                'Cuota ordinaria ' || LPAD('{mes}'::text, 2, '0') || '/' || '{año}',
+                {mes},
+                {año}
+            FROM cuota_configuracion cc
+            WHERE cc.año = {año}
+            AND cc.mes = {mes}
+            AND NOT EXISTS (
+                SELECT 1 FROM registro_financiero_apartamento rfa
+                WHERE rfa.apartamento_id = cc.apartamento_id 
+                AND rfa.concepto_id = 1
+                AND rfa.año_aplicable = {año}
+                AND rfa.mes_aplicable = {mes}
+                AND rfa.descripcion_adicional LIKE 'Cuota ordinaria%'
+            )
+        """
+        
+        try:
+            # Ejecutar la inserción
+            result = session.exec(text(sql_query))
+            resultado['cuotas_generadas'] = result.rowcount
+            
+            # Calcular el monto total generado
+            if resultado['cuotas_generadas'] > 0:
+                sql_monto = f"""
+                    SELECT COALESCE(SUM(monto), 0) as total
+                    FROM registro_financiero_apartamento
+                    WHERE año_aplicable = {año}
+                    AND mes_aplicable = {mes}
+                    AND tipo_movimiento = 'DEBITO'
+                    AND descripcion_adicional LIKE 'Cuota ordinaria%'
+                """
+                
+                monto_result = session.exec(text(sql_monto)).first()
+                if monto_result:
+                    resultado['monto_cuotas'] = Decimal(str(monto_result.total))
+            
+            self.logger.info(f"Cuotas ordinarias: {resultado['cuotas_generadas']} generadas por ${resultado['monto_cuotas']:,.2f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error generando cuotas ordinarias: {e}")
+            raise
+        
+        return resultado
+    
+    def _generar_intereses_moratorios(self, session: Session, año: int, mes: int) -> Dict:
+        """Genera intereses moratorios usando SQL directo"""
+        resultado = {
+            'intereses_generados': 0,
+            'monto_intereses': Decimal('0.00')
+        }
+        
+        # Obtener la tasa de interés vigente para el mes anterior
+        # Para calcular intereses de junio, usamos la tasa de mayo
+        mes_tasa = mes - 1 if mes > 1 else 12
+        año_tasa = año if mes > 1 else año - 1
+        
+        stmt_tasa = select(TasaInteresMora).where(
+            TasaInteresMora.año == año_tasa,
+            TasaInteresMora.mes == mes_tasa
+        ).limit(1)
+        
+        tasa_record = session.exec(stmt_tasa).first()
+        if not tasa_record:
+            self.logger.warning(f"No se encontró tasa de interés para {mes_tasa:02d}/{año_tasa}")
+            return resultado
+        
+        # Obtener concepto de interés
+        stmt_concepto = select(Concepto).where(
+            Concepto.nombre.ilike('%interés%') | Concepto.nombre.ilike('%mora%')
+        ).limit(1)
+        
+        concepto_interes = session.exec(stmt_concepto).first()
+        if not concepto_interes:
+            self.logger.warning("No se encontró concepto de interés")
+            return resultado
+        
+        # Calcular fecha límite (último día del mes anterior)
+        if mes == 1:
+            fecha_limite = f"{año-1}-12-31"
+        else:
+            # Usar el último día del mes anterior
+            import calendar
+            ultimo_dia = calendar.monthrange(año, mes-1)[1]
+            fecha_limite = f"{año}-{mes-1:02d}-{ultimo_dia}"
+        
+        # SQL para calcular e insertar intereses - usando string formatting
+        tasa_porcentaje = float(tasa_record.tasa_interes_mensual) * 100
+        
+        sql_intereses = f"""
+            WITH saldos_apartamento AS (
+                SELECT 
+                    apartamento_id,
+                    SUM(CASE 
+                        WHEN tipo_movimiento = 'DEBITO' THEN monto 
+                        ELSE -monto 
+                    END) as saldo_pendiente
+                FROM registro_financiero_apartamento
+                WHERE fecha_efectiva <= '{fecha_limite}'
+                GROUP BY apartamento_id
+                HAVING SUM(CASE 
+                    WHEN tipo_movimiento = 'DEBITO' THEN monto 
+                    ELSE -monto 
+                END) > 0
+            )
+            INSERT INTO registro_financiero_apartamento 
+            (apartamento_id, concepto_id, fecha_efectiva, monto, 
+             tipo_movimiento, descripcion_adicional, mes_aplicable, año_aplicable)
+            SELECT 
+                sa.apartamento_id,
+                {concepto_interes.id},
+                DATE('{año}' || '-' || LPAD('{mes}'::text, 2, '0') || '-28'),
+                ROUND(sa.saldo_pendiente * ({tasa_porcentaje} / 100), 2),
+                'DEBITO'::tipo_movimiento_enum,
+                'Interés moratorio automático - ' || LPAD('{mes}'::text, 2, '0') || '/' || '{año}',
+                {mes},
+                {año}
+            FROM saldos_apartamento sa
+            WHERE NOT EXISTS (
+                SELECT 1 FROM registro_financiero_apartamento rfa
+                WHERE rfa.apartamento_id = sa.apartamento_id 
+                AND rfa.concepto_id = {concepto_interes.id}
+                AND rfa.año_aplicable = {año}
+                AND rfa.mes_aplicable = {mes}
+                AND rfa.descripcion_adicional LIKE 'Interés moratorio automático%'
+            )
+        """
+        
+        try:
+            # Ejecutar la inserción
+            result = session.exec(text(sql_intereses))
+            resultado['intereses_generados'] = result.rowcount
+            
+            # Calcular monto total de intereses
+            if resultado['intereses_generados'] > 0:
+                sql_monto = f"""
+                    SELECT COALESCE(SUM(monto), 0) as total
+                    FROM registro_financiero_apartamento
+                    WHERE año_aplicable = {año}
+                    AND mes_aplicable = {mes}
+                    AND concepto_id = {concepto_interes.id}
+                    AND descripcion_adicional LIKE 'Interés moratorio automático%'
+                """
+                
+                monto_result = session.exec(text(sql_monto)).first()
+                if monto_result:
+                    resultado['monto_intereses'] = Decimal(str(monto_result.total))
+            
+            self.logger.info(f"Intereses moratorios: {resultado['intereses_generados']} generados por ${resultado['monto_intereses']:,.2f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error generando intereses moratorios: {e}")
+            raise
+        
+        return resultado
+    
+    def _marcar_procesado(self, session: Session, año: int, mes: int, resultado: Dict):
+        """Marca el procesamiento como completado"""
+        try:
+            # Marcar cuotas como procesadas
+            control_cuotas = ControlProcesamientoMensual(
+                año=año,
+                mes=mes,
+                tipo_procesamiento='CUOTAS',
+                estado='COMPLETADO',
+                fecha_procesamiento=datetime.now(),
+                registros_procesados=resultado['cuotas_generadas'],
+                monto_total_generado=resultado['monto_cuotas']
+            )
+            
+            # Marcar intereses como procesados
+            control_intereses = ControlProcesamientoMensual(
+                año=año,
+                mes=mes,
+                tipo_procesamiento='INTERESES',
+                estado='COMPLETADO',
+                fecha_procesamiento=datetime.now(),
+                registros_procesados=resultado['intereses_generados'],
+                monto_total_generado=resultado['monto_intereses']
+            )
+            
+            # Usar merge para evitar duplicados
+            session.merge(control_cuotas)
+            session.merge(control_intereses)
+            session.commit()
+            
+            self.logger.info("Control de procesamiento actualizado")
+            
+        except Exception as e:
+            self.logger.error(f"Error actualizando control de procesamiento: {e}")
+            # No fallar todo el proceso por esto
+            pass
+
+
+def main():
+    """Función principal"""
+    print("🚀 Generador Automático V3 - Funcional")
+    
+    try:
+        generador = GeneradorAutomaticoV3()
+        
+        if len(sys.argv) >= 3:
+            try:
+                año = int(sys.argv[1])
+                mes = int(sys.argv[2])
+                forzar = len(sys.argv) > 3 and str(sys.argv[3]).lower() in ['true', '1', 'forzar']
+                
+                print(f"📅 Procesando {mes:02d}/{año}...")
+                if forzar:
+                    print("⚠️  MODO FORZADO activado")
+                
+                resultado = generador.procesar_mes(año, mes, forzar)
+                
+                # Mostrar resultados
+                if resultado['ya_procesado']:
+                    print(f"ℹ️  El mes {mes:02d}/{año} ya había sido procesado")
+                else:
+                    print(f"\n✅ Procesamiento completado:")
+                    print(f"   📊 Cuotas: {resultado['cuotas_generadas']} (${resultado['monto_cuotas']:,.2f})")
+                    print(f"   💰 Intereses: {resultado['intereses_generados']} (${resultado['monto_intereses']:,.2f})")
+                
+                if resultado['errores']:
+                    print(f"\n❌ Errores encontrados:")
+                    for error in resultado['errores']:
+                        print(f"   - {error}")
+                        
+            except ValueError:
+                print("❌ Error: año y mes deben ser números enteros")
+                sys.exit(1)
+        else:
+            # Procesar mes actual
+            hoy = date.today()
+            print(f"📅 Procesando mes actual: {hoy.month:02d}/{hoy.year}")
+            
+            resultado = generador.procesar_mes(hoy.year, hoy.month)
+            
+            print(f"\n✅ Resultado:")
+            print(f"   📊 Cuotas: {resultado['cuotas_generadas']} (${resultado['monto_cuotas']:,.2f})")
+            print(f"   💰 Intereses: {resultado['intereses_generados']} (${resultado['monto_intereses']:,.2f})")
+            
+            if resultado['ya_procesado']:
+                print("ℹ️  El mes ya había sido procesado")
+                
+    except Exception as e:
+        print(f"❌ Error crítico: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

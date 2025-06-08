@@ -35,13 +35,13 @@ async def propietario_dashboard(request: Request):
         total_cargos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
             .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO.value)
         ).first() or 0
         
         total_abonos = session.exec(
             select(func.sum(RegistroFinancieroApartamento.monto))
             .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
         ).first() or 0
         
         saldo_actual = float(total_abonos) - float(total_cargos)
@@ -232,7 +232,7 @@ async def reportar_pago(
         reporte_pago = RegistroFinancieroApartamento(
             apartamento_id=apartamento.id,
             concepto_id=concepto_cuota.id,
-            tipo_movimiento=TipoMovimientoEnum.CREDITO,
+            tipo_movimiento=TipoMovimientoEnum.CREDITO.value,
             monto=monto_reportado,
             fecha_efectiva=datetime.strptime(fecha_pago_reportado, "%Y-%m-%d").date(),
             mes_aplicable=datetime.now().month,

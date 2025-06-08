@@ -5,7 +5,8 @@ from typing import Optional, List
 from datetime import datetime, date
 from app.models import (
     db_manager, Apartamento, Concepto, TipoMovimientoEnum,
-    RegistroFinancieroApartamento, CuotaConfiguracion
+    RegistroFinancieroApartamento, CuotaConfiguracion,
+    TasaInteresMora, ControlProcesamientoMensual
 )
 from app.dependencies import templates, require_admin, get_db_session
 
@@ -81,7 +82,7 @@ async def admin_pagos(
             pagos_mes = session.exec(
                 select(RegistroFinancieroApartamento)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).all()
@@ -114,7 +115,7 @@ async def admin_pagos(
             recaudado_mes = session.exec(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes_calc)
                 .where(RegistroFinancieroApartamento.año_aplicable == año_calc)
             ).first() or 0
@@ -123,6 +124,14 @@ async def admin_pagos(
         
         # Calcular porcentaje de recaudo basado en monto, no en número de apartamentos
         porcentaje_recaudado = round((total_recaudado / total_a_recaudar * 100) if total_a_recaudar > 0 else 0, 1)
+        
+        # Obtener información del procesamiento automático V3
+        control_v3 = session.exec(
+            select(ControlProcesamientoMensual)
+            .where(ControlProcesamientoMensual.año == año)
+            .where(ControlProcesamientoMensual.mes == mes)
+            .where(ControlProcesamientoMensual.tipo_procesamiento == "CUOTAS_INTERESES")
+        ).first()
         
         return templates.TemplateResponse(
             "admin/pagos.html",
@@ -143,7 +152,8 @@ async def admin_pagos(
                 "recaudacion_data": recaudacion_data,
                 "apartamentos_configurados": len(configuraciones_mes),
                 "apartamentos_con_cargo": len(configuraciones_mes),
-                "concepto_cuota": concepto_cuota
+                "concepto_cuota": concepto_cuota,
+                "control_v3": control_v3
             }
         )
 
@@ -272,13 +282,16 @@ async def admin_pagos_generar_cargos(request: Request):
 async def generar_cargos_automaticos(
     request: Request,
     mes: int = Form(...),
-    año: int = Form(...)
+    año: int = Form(...),
+    concepto_id: int = Form(...)
 ):
+    print(f"Generando cargos para {mes}/{año} con concepto ID {concepto_id}")
+
     """Generar cargos automáticos basados en la configuración"""
     with get_db_session() as session:
         # Obtener el concepto de cuota ordinaria
         concepto_cuota = session.exec(
-            select(Concepto).where(Concepto.nombre.ilike("%cuota%ordinaria%administr%"))
+            select(Concepto).where(Concepto.id == concepto_id)  # Usar ID del concepto seleccionado
         ).first()
         
         if not concepto_cuota:
@@ -299,16 +312,18 @@ async def generar_cargos_automaticos(
                 url="/admin/pagos/generar-cargos?error=no_config",
                 status_code=status.HTTP_302_FOUND
             )
-        
+        print(f"Generando {len(configuraciones)} cargos para {mes}/{año}")
         # Verificar si ya existen cargos para este mes/año
         cargos_existentes = session.exec(
             select(RegistroFinancieroApartamento)
             .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
+            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO.value)
             .where(RegistroFinancieroApartamento.mes_aplicable == mes)
             .where(RegistroFinancieroApartamento.año_aplicable == año)
+            .where(RegistroFinancieroApartamento.apartamento_id != 3)  # Excluir apartamento 3
         ).first()
-        
+
+
         if cargos_existentes:
             return RedirectResponse(
                 url="/admin/pagos/generar-cargos?error=already_exists",
@@ -318,24 +333,22 @@ async def generar_cargos_automaticos(
         # Generar cargos
         cargos_creados = 0
         fecha_cargo = date(año, mes, 1)  # Primer día del mes
-        
         for config in configuraciones:
             nuevo_cargo = RegistroFinancieroApartamento(
-                apartamento_id=config.apartamento_id,
-                concepto_id=concepto_cuota.id,
-                tipo_movimiento=TipoMovimientoEnum.DEBITO,
-                monto=config.monto_cuota_ordinaria_mensual,
-                fecha_efectiva=fecha_cargo,
-                mes_aplicable=mes,
-                año_aplicable=año,
-                referencia_pago=f"CARGO-AUTO-{mes:02d}/{año}",
-                descripcion_adicional=f"Cuota ordinaria de administración - {mes:02d}/{año}",
-                fecha_creacion=datetime.now()
+            apartamento_id=config.apartamento_id,
+            concepto_id=concepto_cuota.id,
+            tipo_movimiento="DEBITO",
+            monto=config.monto_cuota_ordinaria_mensual,
+            fecha_efectiva=fecha_cargo,
+            mes_aplicable=mes,
+            año_aplicable=año,
+            referencia_pago=f"CARGO-AUTO-{mes:02d}/{año}",
+            descripcion_adicional=f"Cuota ordinaria de administración - {mes:02d}/{año}",
+            fecha_creacion=datetime.now()
             )
             session.add(nuevo_cargo)
             cargos_creados += 1
-        
-        session.commit()
+            session.commit()
     
     return RedirectResponse(
         url=f"/admin/pagos/generar-cargos?success={cargos_creados}",
@@ -362,28 +375,49 @@ async def admin_pagos_procesar(request: Request):
             ).all()
             
             # Calcular totales
-            total_cargos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.CARGO])
-            total_abonos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.ABONO])
+            total_cargos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.DEBITO])
+            total_abonos = sum([reg.monto for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.CREDITO])
             saldo_total = total_cargos - total_abonos
             
-            # Agregar información del apartamento con saldo
-            apartamento_info = {
-                'id': apartamento.id,
-                'numero': apartamento.numero,
-                'propietario': apartamento.propietario,
-                'saldo_total': saldo_total,
-                'total_cargos': total_cargos,
-                'total_abonos': total_abonos
-            }
-            apartamentos_con_saldo.append(apartamento_info)
+            # Solo incluir apartamentos con saldo pendiente
+            if saldo_total > 0:
+                # Obtener cargos pendientes (débitos sin abonos correspondientes)
+                cargos_pendientes = []
+                cargos_debitos = [reg for reg in registros if reg.tipo_movimiento == TipoMovimientoEnum.DEBITO]
+                
+                for cargo in cargos_debitos:
+                    # Verificar si hay abono correspondiente para este cargo
+                    abono_correspondiente = any(
+                        reg.tipo_movimiento == TipoMovimientoEnum.CREDITO and
+                        reg.mes_aplicable == cargo.mes_aplicable and
+                        reg.año_aplicable == cargo.año_aplicable
+                        for reg in registros
+                    )
+                    if not abono_correspondiente:
+                        cargos_pendientes.append(cargo)
+                
+                # Agregar información del apartamento con saldo
+                apartamento_info = {
+                    'apartamento': apartamento,  # Objeto completo del apartamento
+                    'saldo_total': saldo_total,
+                    'total_cargos': total_cargos,
+                    'total_abonos': total_abonos,
+                    'cargos_pendientes': sorted(cargos_pendientes, key=lambda x: (x.año_aplicable, x.mes_aplicable))
+                }
+                apartamentos_con_saldo.append(apartamento_info)
         
+        # Ordenar por saldo descendente
+        apartamentos_con_saldo.sort(key=lambda x: x['saldo_total'], reverse=True)
+
+
         return templates.TemplateResponse(
             "admin/pagos_procesar.html",
             {
                 "request": request,
                 "apartamentos": apartamentos,
                 "concepto_cuota": concepto_cuota,
-                "apartamentos_con_saldo": apartamentos_con_saldo
+                "apartamentos_con_saldo": apartamentos_con_saldo,
+                "now": datetime.now
             }
         )
 
@@ -391,7 +425,7 @@ async def admin_pagos_procesar(request: Request):
 async def procesar_pago_individual(
     request: Request,
     apartamento_id: int = Form(...),
-    monto: float = Form(...),
+    monto_pago: float = Form(...),
     fecha_pago: date = Form(...),
     mes_aplicable: int = Form(...),
     año_aplicable: int = Form(...),
@@ -415,8 +449,8 @@ async def procesar_pago_individual(
         nuevo_pago = RegistroFinancieroApartamento(
             apartamento_id=apartamento_id,
             concepto_id=concepto_cuota.id,
-            tipo_movimiento=TipoMovimientoEnum.CREDITO,
-            monto=monto,
+            tipo_movimiento=TipoMovimientoEnum.CREDITO.value,
+            monto=monto_pago,
             fecha_efectiva=fecha_pago,
             mes_aplicable=mes_aplicable,
             año_aplicable=año_aplicable,
@@ -427,6 +461,8 @@ async def procesar_pago_individual(
         
         session.add(nuevo_pago)
         session.commit()
+
+    print(nuevo_pago)
     
     return RedirectResponse(
         url="/admin/pagos/procesar?success=1",
@@ -465,7 +501,7 @@ async def admin_pagos_reportes(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO.value)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).first() or 0
@@ -475,7 +511,7 @@ async def admin_pagos_reportes(
                 select(func.sum(RegistroFinancieroApartamento.monto))
                 .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
                 .where(RegistroFinancieroApartamento.concepto_id == concepto_cuota.id)
-                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
                 .where(RegistroFinancieroApartamento.mes_aplicable == mes)
                 .where(RegistroFinancieroApartamento.año_aplicable == año)
             ).first() or 0
@@ -505,5 +541,157 @@ async def admin_pagos_reportes(
                 "total_pagado": total_pagado,
                 "total_pendiente": total_cargado - total_pagado,
                 "porcentaje_recaudacion": round((total_pagado / total_cargado * 100) if total_cargado > 0 else 0, 1)
+            }
+        )
+
+@router.get("/generar-automatico", response_class=HTMLResponse)
+async def admin_pagos_generar_automatico(request: Request):
+    """Página para generación automática integrada (V3) - Cuotas + Intereses"""
+    mes_actual = datetime.now().month
+    año_actual = datetime.now().year
+    
+    with get_db_session() as session:
+        # Obtener información de procesamiento del mes actual
+        control_actual = session.exec(
+            select(ControlProcesamientoMensual)
+            .where(ControlProcesamientoMensual.año == año_actual)
+            .where(ControlProcesamientoMensual.mes == mes_actual)
+            .where(ControlProcesamientoMensual.tipo_procesamiento == "CUOTAS_INTERESES")
+        ).first()
+        
+        # Obtener historial de procesamientos recientes (últimos 6 meses)
+        historial = []
+        for i in range(6):
+            mes_hist = mes_actual - i
+            año_hist = año_actual
+            if mes_hist <= 0:
+                mes_hist += 12
+                año_hist -= 1
+            
+            control_hist = session.exec(
+                select(ControlProcesamientoMensual)
+                .where(ControlProcesamientoMensual.año == año_hist)
+                .where(ControlProcesamientoMensual.mes == mes_hist)
+                .where(ControlProcesamientoMensual.tipo_procesamiento == "CUOTAS_INTERESES")
+            ).first()
+            
+            historial.append({
+                'mes': mes_hist,
+                'año': año_hist,
+                'procesado': control_hist is not None,
+                'fecha_procesamiento': control_hist.fecha_procesamiento if control_hist else None,
+                'cuotas_generadas': control_hist.cuotas_generadas if control_hist else 0,
+                'intereses_generados': control_hist.intereses_generados if control_hist else 0,
+                'monto_cuotas': control_hist.monto_cuotas if control_hist else 0,
+                'monto_intereses': control_hist.monto_intereses if control_hist else 0
+            })
+        
+        # Verificar configuraciones disponibles
+        configuraciones = session.exec(
+            select(CuotaConfiguracion)
+            .where(CuotaConfiguracion.mes == mes_actual)
+            .where(CuotaConfiguracion.año == año_actual)
+        ).all()
+        
+        # Obtener última tasa de interés configurada
+        tasa_interes = session.exec(
+            select(TasaInteresMora)
+            .order_by(TasaInteresMora.año.desc(), TasaInteresMora.mes.desc())
+            .limit(1)
+        ).first()
+        
+        return templates.TemplateResponse(
+            "admin/pagos_generar_automatico.html",
+            {
+                "request": request,
+                "mes_actual": mes_actual,
+                "año_actual": año_actual,
+                "control_actual": control_actual,
+                "historial": historial,
+                "configuraciones_disponibles": len(configuraciones),
+                "tasa_interes": tasa_interes,
+                "ya_procesado": control_actual is not None
+            }
+        )
+
+@router.post("/generar-automatico")
+async def procesar_generacion_automatica(
+    request: Request,
+    mes: int = Form(...),
+    año: int = Form(...),
+    forzar: bool = Form(False)
+):
+    """Ejecutar generación automática V3 integrada"""
+    from scripts.generador_v3_funcional import GeneradorAutomaticoV3
+    
+    try:
+        # Inicializar el generador V3
+        generador = GeneradorAutomaticoV3()
+        
+        # Ejecutar procesamiento
+        resultado = generador.procesar_mes(año, mes, forzar)
+        
+        if resultado['ya_procesado'] and not forzar:
+            return RedirectResponse(
+                url=f"/admin/pagos/generar-automatico?info=already_processed&mes={mes}&año={año}",
+                status_code=status.HTTP_302_FOUND
+            )
+        
+        # Construir parámetros de respuesta
+        params = [
+            f"success=1",
+            f"mes={mes}",
+            f"año={año}",
+            f"cuotas={resultado['cuotas_generadas']}",
+            f"intereses={resultado['intereses_generados']}",
+            f"monto_cuotas={resultado['monto_cuotas']}",
+            f"monto_intereses={resultado['monto_intereses']}"
+        ]
+        
+        if resultado['errores']:
+            params.append(f"errores={len(resultado['errores'])}")
+        
+        return RedirectResponse(
+            url=f"/admin/pagos/generar-automatico?{'&'.join(params)}",
+            status_code=status.HTTP_302_FOUND
+        )
+        
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/pagos/generar-automatico?error=processing&details={str(e)[:100]}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+@router.get("/status-procesamiento", response_class=HTMLResponse)
+async def admin_pagos_status_procesamiento(request: Request):
+    """Página de estado de procesamiento automático"""
+    with get_db_session() as session:
+        # Obtener todos los procesamientos ordenados por fecha
+        procesamientos = session.exec(
+            select(ControlProcesamientoMensual)
+            .where(ControlProcesamientoMensual.tipo_procesamiento == "CUOTAS_INTERESES")
+            .order_by(ControlProcesamientoMensual.año.desc(), ControlProcesamientoMensual.mes.desc())
+            .limit(24)  # Últimos 24 meses
+        ).all()
+        
+        # Estadísticas generales
+        total_cuotas = sum(p.cuotas_generadas for p in procesamientos)
+        total_intereses = sum(p.intereses_generados for p in procesamientos)
+        total_monto = sum(p.monto_cuotas + p.monto_intereses for p in procesamientos)
+        meses_procesados = len(procesamientos)
+        
+        # Último procesamiento
+        ultimo_procesamiento = procesamientos[0] if procesamientos else None
+        
+        return templates.TemplateResponse(
+            "admin/pagos_status_procesamiento.html",
+            {
+                "request": request,
+                "procesamientos": procesamientos,
+                "total_cuotas": total_cuotas,
+                "total_intereses": total_intereses,
+                "total_monto": total_monto,
+                "meses_procesados": meses_procesados,
+                "ultimo_procesamiento": ultimo_procesamiento
             }
         )

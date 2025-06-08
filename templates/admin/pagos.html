@@ -12,8 +12,11 @@
             <a href="/admin/pagos/configuracion" class="btn btn-outline-primary">
                 <i class="fas fa-cog"></i> Configurar Cuotas
             </a>
-            <a href="/admin/pagos/generar-cargos" class="btn btn-outline-success">
-                <i class="fas fa-plus-circle"></i> Generar Cargos
+            <a href="/admin/pagos/generar-automatico" class="btn btn-success">
+                <i class="fas fa-magic"></i> Generación Automática V3
+            </a>
+            <a href="/admin/pagos/generar-cargos" class="btn btn-outline-secondary">
+                <i class="fas fa-plus-circle"></i> Generación Básica
             </a>
             <a href="/admin/pagos/procesar" class="btn btn-outline-info">
                 <i class="fas fa-hand-holding-usd"></i> Procesar Pagos
@@ -283,6 +286,89 @@
                             </ul>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Estado del Procesamiento V3 -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0">
+                        <i class="fas fa-magic"></i> Estado Generación Automática V3
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if control_v3 %}
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="me-3">
+                            <i class="fas fa-check-circle text-success fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0 text-success">Mes Procesado</h6>
+                            <small class="text-muted">{{ control_v3.fecha_procesamiento.strftime('%d/%m/%Y %H:%M') }}</small>
+                        </div>
+                    </div>
+
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-bold text-primary">{{ control_v3.cuotas_generadas }}</div>
+                                <small class="text-muted">Cuotas</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border rounded p-2 mb-2">
+                                <div class="fw-bold text-warning">{{ control_v3.intereses_generados }}</div>
+                                <small class="text-muted">Intereses</small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center">
+                        <div class="fw-bold text-success h4">${{ "{:,.0f}".format(control_v3.monto_cuotas + control_v3.monto_intereses) }}</div>
+                        <small class="text-muted">Total Generado</small>
+                    </div>
+
+                    <hr>
+                    
+                    <div class="d-grid gap-2">
+                        <a href="/admin/pagos/status-procesamiento" class="btn btn-outline-info btn-sm">
+                            <i class="fas fa-history"></i> Ver Historial
+                        </a>
+                        <a href="/admin/pagos/generar-automatico" class="btn btn-warning btn-sm">
+                            <i class="fas fa-redo"></i> Reprocesar
+                        </a>
+                    </div>
+                    {% else %}
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="me-3">
+                            <i class="fas fa-clock text-warning fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0 text-warning">Pendiente de Procesar</h6>
+                            <small class="text-muted">El mes actual no ha sido procesado</small>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-info">
+                        <small>
+                            <i class="fas fa-info-circle"></i>
+                            La generación automática V3 procesa cuotas ordinarias e intereses moratorios en una sola operación.
+                        </small>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <a href="/admin/pagos/generar-automatico" class="btn btn-success">
+                            <i class="fas fa-magic"></i> Procesar Mes
+                        </a>
+                        <a href="/admin/pagos/status-procesamiento" class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-history"></i> Ver Historial
+                        </a>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}Historial de Procesamiento Automático{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0">
+            <i class="fas fa-history"></i> Historial de Procesamiento Automático V3
+        </h1>
+        <div class="btn-group">
+            <a href="/admin/pagos" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Volver a Pagos
+            </a>
+            <a href="/admin/pagos/generar-automatico" class="btn btn-success">
+                <i class="fas fa-magic"></i> Procesar Nuevo Mes
+            </a>
+        </div>
+    </div>
+
+    <!-- Estadísticas Generales -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-white bg-primary">
+                <div class="card-body text-center">
+                    <h4 class="mb-0">{{ meses_procesados }}</h4>
+                    <small>Meses Procesados</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-success">
+                <div class="card-body text-center">
+                    <h4 class="mb-0">{{ total_cuotas }}</h4>
+                    <small>Cuotas Generadas</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-warning">
+                <div class="card-body text-center">
+                    <h4 class="mb-0">{{ total_intereses }}</h4>
+                    <small>Intereses Generados</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-white bg-info">
+                <div class="card-body text-center">
+                    <h4 class="mb-0">${{ "{:,.0f}".format(total_monto) }}</h4>
+                    <small>Total Procesado</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Último Procesamiento -->
+    {% if ultimo_procesamiento %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clock"></i> Último Procesamiento
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Período:</strong> {{ "{:02d}".format(ultimo_procesamiento.mes) }}/{{ ultimo_procesamiento.año }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Fecha:</strong> {{ ultimo_procesamiento.fecha_procesamiento.strftime('%d/%m/%Y %H:%M:%S') }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Cuotas:</strong> {{ ultimo_procesamiento.cuotas_generadas }}
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Intereses:</strong> {{ ultimo_procesamiento.intereses_generados }}
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-6">
+                            <strong>Monto Cuotas:</strong> ${{ "{:,.2f}".format(ultimo_procesamiento.monto_cuotas) }}
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Monto Intereses:</strong> ${{ "{:,.2f}".format(ultimo_procesamiento.monto_intereses) }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Historial Detallado -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">
+                <i class="fas fa-list"></i> Historial Detallado (Últimos 24 meses)
+            </h5>
+        </div>
+        <div class="card-body">
+            {% if procesamientos %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Período</th>
+                            <th>Fecha Procesamiento</th>
+                            <th class="text-center">Cuotas</th>
+                            <th class="text-center">Intereses</th>
+                            <th class="text-end">Monto Cuotas</th>
+                            <th class="text-end">Monto Intereses</th>
+                            <th class="text-end">Total</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for procesamiento in procesamientos %}
+                        <tr>
+                            <td>
+                                <strong>{{ "{:02d}".format(procesamiento.mes) }}/{{ procesamiento.año }}</strong>
+                                {% if loop.index == 1 %}
+                                <span class="badge bg-success ms-1">Más Reciente</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ procesamiento.fecha_procesamiento.strftime('%d/%m/%Y') }}
+                                <br>
+                                <small class="text-muted">{{ procesamiento.fecha_procesamiento.strftime('%H:%M:%S') }}</small>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-primary">{{ procesamiento.cuotas_generadas }}</span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge bg-warning">{{ procesamiento.intereses_generados }}</span>
+                            </td>
+                            <td class="text-end">
+                                ${{ "{:,.2f}".format(procesamiento.monto_cuotas) }}
+                            </td>
+                            <td class="text-end">
+                                ${{ "{:,.2f}".format(procesamiento.monto_intereses) }}
+                            </td>
+                            <td class="text-end">
+                                <strong>${{ "{:,.2f}".format(procesamiento.monto_cuotas + procesamiento.monto_intereses) }}</strong>
+                            </td>
+                            <td>
+                                <a href="/admin/pagos/reportes?mes={{ procesamiento.mes }}&año={{ procesamiento.año }}" 
+                                   class="btn btn-sm btn-outline-info" title="Ver Reporte">
+                                    <i class="fas fa-chart-bar"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="table-light">
+                            <th colspan="2">TOTALES</th>
+                            <th class="text-center">{{ total_cuotas }}</th>
+                            <th class="text-center">{{ total_intereses }}</th>
+                            <th class="text-end">${{ "{:,.2f}".format(procesamientos|sum(attribute='monto_cuotas')) }}</th>
+                            <th class="text-end">${{ "{:,.2f}".format(procesamientos|sum(attribute='monto_intereses')) }}</th>
+                            <th class="text-end"><strong>${{ "{:,.2f}".format(total_monto) }}</strong></th>
+                            <th></th>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-4">
+                <i class="fas fa-info-circle fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">No hay procesamientos registrados</h5>
+                <p class="text-muted">Los procesamientos automáticos V3 aparecerán aquí una vez que ejecute la generación.</p>
+                <a href="/admin/pagos/generar-automatico" class="btn btn-success">
+                    <i class="fas fa-magic"></i> Realizar Primer Procesamiento
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
