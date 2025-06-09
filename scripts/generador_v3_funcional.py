@@ -189,7 +189,17 @@ class GeneradorAutomaticoV3:
         return resultado
     
     def _generar_intereses_moratorios(self, session: Session, año: int, mes: int) -> Dict:
-        """Genera intereses moratorios usando SQL directo"""
+        """
+        Genera intereses moratorios sobre saldos pendientes al final del mes anterior.
+        
+        LÓGICA: Si un apartamento tiene saldo pendiente al finalizar el mes anterior,
+        se genera interés en el mes actual. Esto permite que el propietario tenga
+        todo el mes para pagar sin generar intereses, pero una vez finalizado el mes,
+        cualquier saldo pendiente genera interés moratorio.
+        
+        Ejemplo: DÉBITO generado el 29 de enero -> si no se paga antes del 31 de enero,
+        genera interés en febrero.
+        """
         resultado = {
             'intereses_generados': 0,
             'monto_intereses': Decimal('0.00')
@@ -210,6 +220,8 @@ class GeneradorAutomaticoV3:
             self.logger.warning(f"No se encontró tasa de interés para {mes_tasa:02d}/{año_tasa}")
             return resultado
         
+        self.logger.info(f"Tasa de interés encontrada: {tasa_record.tasa_interes_mensual} para {mes_tasa:02d}/{año_tasa}")
+        
         # Obtener concepto de interés
         stmt_concepto = select(Concepto).where(
             Concepto.nombre.ilike('%interés%') | Concepto.nombre.ilike('%mora%')
@@ -220,6 +232,8 @@ class GeneradorAutomaticoV3:
             self.logger.warning("No se encontró concepto de interés")
             return resultado
         
+        self.logger.info(f"Concepto de interés encontrado: {concepto_interes.nombre} (ID: {concepto_interes.id})")
+        
         # Calcular fecha límite (último día del mes anterior)
         if mes == 1:
             fecha_limite = f"{año-1}-12-31"
@@ -229,24 +243,31 @@ class GeneradorAutomaticoV3:
             ultimo_dia = calendar.monthrange(año, mes-1)[1]
             fecha_limite = f"{año}-{mes-1:02d}-{ultimo_dia}"
         
-        # SQL para calcular e insertar intereses - usando string formatting
+        # SQL CORREGIDO - Generar intereses sobre cualquier saldo pendiente al final del mes anterior
         tasa_porcentaje = float(tasa_record.tasa_interes_mensual) * 100
         
         sql_intereses = f"""
             WITH saldos_apartamento AS (
                 SELECT 
-                    apartamento_id,
+                    rfa.apartamento_id,
                     SUM(CASE 
-                        WHEN tipo_movimiento = 'DEBITO' THEN monto 
-                        ELSE -monto 
+                        WHEN rfa.tipo_movimiento = 'DEBITO' THEN rfa.monto 
+                        ELSE -rfa.monto 
                     END) as saldo_pendiente
-                FROM registro_financiero_apartamento
-                WHERE fecha_efectiva <= '{fecha_limite}'
-                GROUP BY apartamento_id
+                FROM registro_financiero_apartamento rfa
+                LEFT JOIN concepto c ON rfa.concepto_id = c.id
+                WHERE rfa.fecha_efectiva <= '{fecha_limite}'
+                -- Excluir conceptos de interés del cálculo base para evitar interés sobre interés
+                AND (c.nombre IS NULL OR (
+                    c.nombre NOT ILIKE '%interés%' AND 
+                    c.nombre NOT ILIKE '%mora%' AND
+                    c.nombre NOT ILIKE '%intereses%'
+                ))
+                GROUP BY rfa.apartamento_id
                 HAVING SUM(CASE 
-                    WHEN tipo_movimiento = 'DEBITO' THEN monto 
-                    ELSE -monto 
-                END) > 0
+                    WHEN rfa.tipo_movimiento = 'DEBITO' THEN rfa.monto 
+                    ELSE -rfa.monto 
+                END) > 0.01  -- Solo saldos positivos (deudas)
             )
             INSERT INTO registro_financiero_apartamento 
             (apartamento_id, concepto_id, fecha_efectiva, monto, 
@@ -257,7 +278,9 @@ class GeneradorAutomaticoV3:
                 DATE('{año}' || '-' || LPAD('{mes}'::text, 2, '0') || '-28'),
                 ROUND(sa.saldo_pendiente * ({tasa_porcentaje} / 100), 2),
                 'DEBITO'::tipo_movimiento_enum,
-                'Interés moratorio automático - ' || LPAD('{mes}'::text, 2, '0') || '/' || '{año}',
+                'Interés moratorio automático - ' || LPAD('{mes}'::text, 2, '0') || '/' || '{año}' ||
+                ' (Base: $' || ROUND(sa.saldo_pendiente, 2) || 
+                ', Tasa: {tasa_porcentaje}%, Saldo al {fecha_limite})',
                 {mes},
                 {año}
             FROM saldos_apartamento sa

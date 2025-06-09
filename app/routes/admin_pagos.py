@@ -434,9 +434,9 @@ async def procesar_pago_individual(
 ):
     """Procesar pago individual"""
     with get_db_session() as session:
-        # Obtener el concepto de cuota ordinaria
+        # Obtener el concepto de Pago Cuota
         concepto_cuota = session.exec(
-            select(Concepto).where(Concepto.nombre.ilike("%cuota%ordinaria%administr%"))
+            select(Concepto).where(Concepto.id == 5)  # ID del concepto de Pago Cuota
         ).first()
         
         if not concepto_cuota:
@@ -445,24 +445,27 @@ async def procesar_pago_individual(
                 status_code=status.HTTP_302_FOUND
             )
         
+        # Construir fecha_efectiva usando el año y mes del formulario
+        # Esto permite registrar pagos históricos con la fecha correcta del período
+        from datetime import date as date_class
+        fecha_efectiva_calculada = date_class(año_aplicable, mes_aplicable, 15)  # Día 15 del mes especificado
+        
         # Crear registro de pago
         nuevo_pago = RegistroFinancieroApartamento(
             apartamento_id=apartamento_id,
             concepto_id=concepto_cuota.id,
             tipo_movimiento=TipoMovimientoEnum.CREDITO.value,
             monto=monto_pago,
-            fecha_efectiva=fecha_pago,
+            fecha_efectiva=fecha_efectiva_calculada,  # Usar fecha calculada del período
             mes_aplicable=mes_aplicable,
             año_aplicable=año_aplicable,
             referencia_pago=referencia_pago or f"PAGO-{datetime.now().strftime('%Y%m%d%H%M%S')}",
-            descripcion_adicional=observaciones or "Pago procesado por administrador",
+            descripcion_adicional=observaciones or f"Pago histórico {mes_aplicable:02d}/{año_aplicable}",
             fecha_creacion=datetime.now()
         )
         
         session.add(nuevo_pago)
         session.commit()
-
-    print(nuevo_pago)
     
     return RedirectResponse(
         url="/admin/pagos/procesar?success=1",

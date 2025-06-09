@@ -174,8 +174,12 @@
                 </div>
                 <div class="col-md-6">
                     <div class="mb-3">
-                        <label for="fecha_pago" class="form-label">Fecha del Pago *</label>
+                        <label for="fecha_pago" class="form-label">Fecha de Registro *</label>
                         <input type="date" class="form-control" name="fecha_pago" id="fecha_pago" value="{{ now().strftime('%Y-%m-%d') }}" required>
+                        <div class="form-text">
+                            <i class="fas fa-info-circle"></i> 
+                            Nota: La fecha efectiva se ajustará automáticamente al período seleccionado (año/mes aplicable)
+                        </div>
                     </div>
                 </div>
             </div>
