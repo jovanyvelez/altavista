@@ -17,48 +17,63 @@ async def propietario_dashboard(request: Request):
     user, propietario = require_propietario(request)
     
     with get_db_session() as session:
-        # Obtener apartamento del propietario
-        apartamento = session.exec(
+        # Obtener todos los apartamentos del propietario
+        apartamentos = session.exec(
             select(Apartamento).where(Apartamento.propietario_id == propietario.id)
-        ).first()
+        ).all()
         
-        if not apartamento:
+        if not apartamentos:
             return templates.TemplateResponse("propietario/dashboard.html", {
                 "request": request,
                 "user": user,
                 "propietario": propietario,
-                "apartamento": None,
-                "error": "No tiene apartamento asignado"
+                "apartamentos": None,
+                "error": "No tiene apartamentos asignados"
             })
         
-        # Obtener estadísticas financieras
-        total_cargos = session.exec(
-            select(func.sum(RegistroFinancieroApartamento.monto))
-            .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO.value)
-        ).first() or 0
+        # Calcular estadísticas financieras para todos los apartamentos
+        total_cargos = 0
+        total_abonos = 0
+        registros_recientes = []
         
-        total_abonos = session.exec(
-            select(func.sum(RegistroFinancieroApartamento.monto))
-            .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO.value)
-        ).first() or 0
+        for apartamento in apartamentos:
+            # Obtener cargos del apartamento
+            cargos_apt = session.exec(
+                select(func.sum(RegistroFinancieroApartamento.monto))
+                .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.DEBITO)
+            ).first() or 0
+            
+            # Obtener abonos del apartamento
+            abonos_apt = session.exec(
+                select(func.sum(RegistroFinancieroApartamento.monto))
+                .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
+                .where(RegistroFinancieroApartamento.tipo_movimiento == TipoMovimientoEnum.CREDITO)
+            ).first() or 0
+            
+            total_cargos += float(cargos_apt)
+            total_abonos += float(abonos_apt)
+            
+            # Obtener registros recientes del apartamento
+            registros_apt = session.exec(
+                select(RegistroFinancieroApartamento)
+                .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
+                .order_by(RegistroFinancieroApartamento.fecha_efectiva.desc())
+                .limit(3)  # Menos registros por apartamento para no sobrecargar
+            ).all()
+            registros_recientes.extend(registros_apt)
         
-        saldo_actual = float(total_abonos) - float(total_cargos)
+        # Ordenar todos los registros recientes por fecha
+        registros_recientes.sort(key=lambda x: x.fecha_efectiva, reverse=True)
+        registros_recientes = registros_recientes[:5]  # Mantener solo los 5 más recientes
         
-        # Obtener registros recientes
-        registros_recientes = session.exec(
-            select(RegistroFinancieroApartamento)
-            .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
-            .order_by(RegistroFinancieroApartamento.fecha_efectiva.desc())
-            .limit(5)
-        ).all()
+        saldo_actual = total_cargos - total_abonos  # Saldo pendiente (deuda)
         
         return templates.TemplateResponse("propietario/dashboard.html", {
             "request": request,
             "user": user,
             "propietario": propietario,
-            "apartamento": apartamento,
+            "apartamentos": apartamentos,  # Cambio de 'apartamento' a 'apartamentos'
             "total_cargos": total_cargos,
             "total_abonos": total_abonos,
             "saldo_actual": saldo_actual,
@@ -66,27 +81,84 @@ async def propietario_dashboard(request: Request):
         })
 
 @router.get("/estado-cuenta", response_class=HTMLResponse)
-async def propietario_estado_cuenta(request: Request):
+async def propietario_estado_cuenta(request: Request, apartamento: Optional[int] = None):
     """Estado de cuenta del propietario"""
     user, propietario = require_propietario(request)
     
     with get_db_session() as session:
-        # Obtener apartamento del propietario
-        apartamento = session.exec(
+        # Obtener apartamentos del propietario
+        apartamentos_propietario = session.exec(
             select(Apartamento).where(Apartamento.propietario_id == propietario.id)
-        ).first()
+        ).all()
         
-        if not apartamento:
-            raise HTTPException(status_code=404, detail="Apartamento no encontrado")
+        if not apartamentos_propietario:
+            raise HTTPException(status_code=404, detail="No tienes apartamentos asignados")
         
-        # Obtener todos los registros financieros
-        registros = session.exec(
+        # Si se especifica un apartamento, verificar que pertenezca al propietario
+        apartamento_seleccionado = None
+        if apartamento:
+            apartamento_seleccionado = session.exec(
+                select(Apartamento)
+                .where(Apartamento.id == apartamento)
+                .where(Apartamento.propietario_id == propietario.id)
+            ).first()
+            
+            if not apartamento_seleccionado:
+                raise HTTPException(status_code=403, detail="No tienes acceso a este apartamento")
+        else:
+            # Si no se especifica, usar el primer apartamento
+            apartamento_seleccionado = apartamentos_propietario[0]
+        
+        # Obtener todos los registros financieros del apartamento seleccionado
+        registros_raw = session.exec(
             select(RegistroFinancieroApartamento)
-            .where(RegistroFinancieroApartamento.apartamento_id == apartamento.id)
+            .where(RegistroFinancieroApartamento.apartamento_id == apartamento_seleccionado.id)
             .order_by(RegistroFinancieroApartamento.fecha_efectiva.desc())
         ).all()
         
-        # Calcular totales
+        # Cargar las relaciones manualmente
+        registros = []
+        for reg in registros_raw:
+            # Obtener apartamento
+            apartamento = session.exec(
+                select(Apartamento).where(Apartamento.id == reg.apartamento_id)
+            ).first()
+            
+            # Obtener concepto
+            concepto = session.exec(
+                select(Concepto).where(Concepto.id == reg.concepto_id)
+            ).first()
+            
+            # Agregar las relaciones al objeto registro
+            reg.apartamento = apartamento
+            reg.concepto = concepto
+            registros.append(reg)
+        
+        # Preparar saldos por apartamento (formato que espera el template)
+        saldos_por_apartamento = {}
+        saldo_total = 0
+        
+        for apartamento_prop in apartamentos_propietario:
+            # Calcular saldo para este apartamento
+            registros_apt = [r for r in registros if r.apartamento_id == apartamento_prop.id]
+            
+            total_cargos = sum(
+                r.monto for r in registros_apt 
+                if r.tipo_movimiento == TipoMovimientoEnum.DEBITO
+            )
+            total_abonos = sum(
+                r.monto for r in registros_apt 
+                if r.tipo_movimiento == TipoMovimientoEnum.CREDITO
+            )
+            saldo_apartamento = total_cargos - total_abonos
+            
+            saldos_por_apartamento[apartamento_prop.id] = {
+                'apartamento': apartamento_prop,
+                'saldo': saldo_apartamento
+            }
+            saldo_total += saldo_apartamento
+        
+        # Calcular totales del apartamento seleccionado
         total_cargos = sum(
             r.monto for r in registros 
             if r.tipo_movimiento == TipoMovimientoEnum.DEBITO
@@ -95,13 +167,16 @@ async def propietario_estado_cuenta(request: Request):
             r.monto for r in registros 
             if r.tipo_movimiento == TipoMovimientoEnum.CREDITO
         )
-        saldo_actual = total_abonos - total_cargos
+        saldo_actual = total_cargos - total_abonos
         
         return templates.TemplateResponse("propietario/estado_cuenta.html", {
             "request": request,
             "propietario": propietario,
-            "apartamento": apartamento,
+            "apartamento": apartamento_seleccionado,
+            "apartamentos": apartamentos_propietario,
             "registros": registros,
+            "saldos_por_apartamento": saldos_por_apartamento,
+            "saldo_total": saldo_total,
             "total_cargos": total_cargos,
             "total_abonos": total_abonos,
             "saldo_actual": saldo_actual

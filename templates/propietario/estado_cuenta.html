@@ -107,14 +107,14 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-end">
-                                        {% if registro.tipo_movimiento.value == "cargo" %}
+                                        {% if registro.tipo_movimiento == "DEBITO" %}
                                             <span class="text-danger">{{ "%.2f"|format(registro.monto) }}</span>
                                         {% else %}
                                             -
                                         {% endif %}
                                     </td>
                                     <td class="text-end">
-                                        {% if registro.tipo_movimiento.value == "abono" %}
+                                        {% if registro.tipo_movimiento == "CREDITO" %}
                                             <span class="text-success">{{ "%.2f"|format(registro.monto) }}</span>
                                         {% else %}
                                             -

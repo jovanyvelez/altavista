@@ -698,3 +698,67 @@ async def admin_pagos_status_procesamiento(request: Request):
                 "ultimo_procesamiento": ultimo_procesamiento
             }
         )
+
+@router.post("/pago-automatico")
+async def procesar_pago_automatico(
+    request: Request,
+    apartamento_id: int = Form(...),
+    monto_pago: float = Form(...),
+    referencia_pago: Optional[str] = Form(None)
+):
+    """Procesar pago automático con distribución inteligente"""
+    from app.services.pago_automatico import PagoAutomaticoService
+    
+    try:
+        # Validar monto
+        if monto_pago <= 0:
+            return RedirectResponse(
+                url="/admin/pagos/procesar?error=invalid_amount",
+                status_code=status.HTTP_302_FOUND
+            )
+        
+        # Procesar pago automático
+        servicio_pago = PagoAutomaticoService()
+        resultado = servicio_pago.procesar_pago_automatico(
+            apartamento_id=apartamento_id,
+            monto_pago=monto_pago,
+            referencia=referencia_pago
+        )
+        
+        if resultado.get("error"):
+            return RedirectResponse(
+                url=f"/admin/pagos/procesar?error=processing&details={resultado['error']}",
+                status_code=status.HTTP_302_FOUND
+            )
+        
+        # Construir parámetros de respuesta
+        params = [
+            "success=1",
+            "auto_payment=1",
+            f"monto_procesado={resultado['monto_procesado']}",
+            f"pagos_realizados={len(resultado['pagos_realizados'])}",
+            f"apartamento_id={apartamento_id}"
+        ]
+        
+        return RedirectResponse(
+            url=f"/admin/pagos/procesar?{'&'.join(params)}",
+            status_code=status.HTTP_302_FOUND
+        )
+        
+    except Exception as e:
+        return RedirectResponse(
+            url=f"/admin/pagos/procesar?error=processing&details={str(e)[:100]}",
+            status_code=status.HTTP_302_FOUND
+        )
+
+@router.get("/resumen-deuda/{apartamento_id}")
+async def obtener_resumen_deuda(apartamento_id: int):
+    """API endpoint para obtener resumen de deuda de un apartamento"""
+    from app.services.pago_automatico import PagoAutomaticoService
+    
+    try:
+        servicio_pago = PagoAutomaticoService()
+        resumen = servicio_pago.obtener_resumen_deuda(apartamento_id)
+        return resumen
+    except Exception as e:
+        return {"error": str(e)}

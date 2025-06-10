@@ -15,7 +15,29 @@
 
     {% if request.query_params.get('success') %}
     <div class="alert alert-success alert-dismissible fade show">
+        {% if request.query_params.get('auto_payment') %}
+        <span class="fas fa-magic"></span> 
+        <strong>Pago automático procesado exitosamente!</strong>
+        {% if request.query_params.get('monto_procesado') %}
+        <br>Monto procesado: ${{ "{:,.2f}".format(request.query_params.get('monto_procesado')|float) }}
+        {% endif %}
+        {% if request.query_params.get('pagos_realizados') %}
+        <br>Registros creados: {{ request.query_params.get('pagos_realizados') }}
+        {% endif %}
+        {% else %}
         <span class="fas fa-check-circle"></span> Pago procesado exitosamente.
+        {% endif %}
+        <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'"></button>
+    </div>
+    {% endif %}
+    
+    {% if request.query_params.get('error') %}
+    <div class="alert alert-danger alert-dismissible fade show">
+        <span class="fas fa-exclamation-triangle"></span> 
+        Error al procesar el pago.
+        {% if request.query_params.get('details') %}
+        <br>Detalles: {{ request.query_params.get('details') }}
+        {% endif %}
         <button type="button" class="btn-close" onclick="this.parentElement.style.display='none'"></button>
     </div>
     {% endif %}
@@ -121,7 +143,10 @@
                             </td>
                             <td>
                                 <div class="btn-group btn-group-sm">
-                                    <button type="button" class="btn btn-success" onclick="abrirModalPago({{ item.apartamento.id }}, '{{ item.apartamento.identificador|replace("'", "\\'") }}', {{ item.saldo_total }})" title="Procesar Pago">
+                                    <button type="button" class="btn btn-warning" onclick="abrirModalPagoAutomatico({{ item.apartamento.id }}, '{{ item.apartamento.identificador|replace("'", "\\'") }}', {{ item.saldo_total }})" title="Pagar Valor (Automático)">
+                                        <span class="fas fa-magic"></span> Pagar
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="abrirModalPago({{ item.apartamento.id }}, '{{ item.apartamento.identificador|replace("'", "\\'") }}', {{ item.saldo_total }})" title="Procesar Pago Manual">
                                         <span class="fas fa-dollar-sign"></span>
                                     </button>
                                     <a href="/admin/registros-financieros/{{ item.apartamento.id }}" class="btn btn-outline-primary" title="Ver Movimientos">
@@ -228,6 +253,62 @@
     </div>
 </div>
 
+<!-- Modal Pago Automático -->
+<div id="modalPagoAutomatico" class="modal-vanilla" style="display:none;">
+    <div class="modal-vanilla-content">
+        <span class="modal-vanilla-close" onclick="cerrarModalPagoAutomatico()">&times;</span>
+        <h5><span class="fas fa-magic"></span> Pago Automático - Apartamento <span id="apartamentoModalAuto"></span></h5>
+        
+        <!-- Información de deuda -->
+        <div id="resumenDeuda" class="alert alert-info mb-3">
+            <div class="d-flex justify-content-between">
+                <div>
+                    <strong>Cargando información de deuda...</strong>
+                    <div class="spinner-border spinner-border-sm ms-2" role="status"></div>
+                </div>
+            </div>
+        </div>
+        
+        <form method="post" action="/admin/pagos/pago-automatico" id="formPagoAutomatico">
+            <input type="hidden" name="apartamento_id" id="apartamentoIdAuto">
+            
+            <div class="mb-3">
+                <label for="monto_pago_auto" class="form-label">Monto del Pago *</label>
+                <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" name="monto_pago" id="monto_pago_auto" step="0.01" min="0.01" required>
+                </div>
+                <div class="form-text">
+                    <i class="fas fa-magic"></i> 
+                    El sistema distribuirá automáticamente el pago: primero intereses, luego cuotas (cronológicamente)
+                </div>
+            </div>
+            
+            <div class="mb-3">
+                <label for="referencia_auto" class="form-label">Referencia del Pago</label>
+                <input type="text" class="form-control" name="referencia_pago" id="referencia_auto" placeholder="Ej: Transferencia, Cheque #1234, etc.">
+            </div>
+            
+            <div class="alert alert-warning">
+                <span class="fas fa-info-circle"></span>
+                <strong>Distribución Automática:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>1º Intereses por mora (más antiguos primero)</li>
+                    <li>2º Cuotas ordinarias (más antiguas primero)</li>
+                    <li>3º Exceso si el pago supera la deuda</li>
+                </ul>
+            </div>
+            
+            <div class="modal-vanilla-footer">
+                <button type="button" class="btn btn-secondary" onclick="cerrarModalPagoAutomatico()">Cancelar</button>
+                <button type="submit" class="btn btn-warning">
+                    <span class="fas fa-magic"></span> Procesar Pago Automático
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <style>
 .modal-vanilla {
     position: fixed;
@@ -306,6 +387,115 @@ function actualizarDescripcion() {
     if (mes && año) {
         var nombreMes = document.querySelector('#mes_aplicable option[value="'+mes+'"]')?.textContent;
         document.getElementById('descripcion').value = `Pago cuota ordinaria ${nombreMes} ${año}`;
+    }
+}
+
+// Funciones para el modal de pago automático
+function abrirModalPagoAutomatico(apartamentoId, apartamentoIdentificador, saldoTotal) {
+    document.getElementById('modalPagoAutomatico').style.display = 'flex';
+    document.getElementById('apartamentoIdAuto').value = apartamentoId;
+    document.getElementById('apartamentoModalAuto').textContent = apartamentoIdentificador;
+    document.getElementById('monto_pago_auto').value = saldoTotal.toFixed(2);
+    
+    // Cargar información detallada de la deuda
+    cargarResumenDeuda(apartamentoId);
+}
+
+function cerrarModalPagoAutomatico() {
+    document.getElementById('modalPagoAutomatico').style.display = 'none';
+}
+
+function cargarResumenDeuda(apartamentoId) {
+    const resumenDiv = document.getElementById('resumenDeuda');
+    
+    // Mostrar loading
+    resumenDiv.innerHTML = `
+        <div class="d-flex justify-content-between">
+            <div>
+                <strong>Cargando información de deuda...</strong>
+                <div class="spinner-border spinner-border-sm ms-2" role="status"></div>
+            </div>
+        </div>
+    `;
+    
+    // Hacer petición AJAX
+    fetch(`/admin/pagos/resumen-deuda/${apartamentoId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                resumenDiv.innerHTML = `
+                    <div class="text-danger">
+                        <i class="fas fa-exclamation-triangle"></i> Error al cargar información: ${data.error}
+                    </div>
+                `;
+                return;
+            }
+            
+            // Mostrar resumen de deuda
+            let html = `
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <h6 class="text-danger mb-0">$${data.total_deuda.toFixed(2)}</h6>
+                        <small class="text-muted">Total Deuda</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-warning mb-0">$${data.total_intereses.toFixed(2)}</h6>
+                        <small class="text-muted">Intereses</small>
+                    </div>
+                    <div class="col-md-4">
+                        <h6 class="text-info mb-0">$${data.total_cuotas.toFixed(2)}</h6>
+                        <small class="text-muted">Cuotas</small>
+                    </div>
+                </div>
+            `;
+            
+            if (data.periodos_pendientes > 0) {
+                html += `
+                    <hr class="my-2">
+                    <small class="text-muted">
+                        <i class="fas fa-calendar"></i> ${data.periodos_pendientes} período(s) pendiente(s)
+                    </small>
+                `;
+            }
+            
+            resumenDiv.innerHTML = html;
+        })
+        .catch(error => {
+            resumenDiv.innerHTML = `
+                <div class="text-danger">
+                    <i class="fas fa-exclamation-triangle"></i> Error de conexión
+                </div>
+            `;
+        });
+}
+
+// Validación del formulario de pago automático
+var formAuto = document.getElementById('formPagoAutomatico');
+if(formAuto) {
+    formAuto.addEventListener('submit', function(e) {
+        var monto = parseFloat(document.getElementById('monto_pago_auto').value);
+        if (monto <= 0) {
+            alert('El monto debe ser mayor a cero');
+            e.preventDefault();
+            return;
+        }
+        
+        if (!confirm('¿Confirma procesar el pago automático? El sistema distribuirá el dinero automáticamente según las prioridades establecidas.')) {
+            e.preventDefault();
+        }
+    });
+}
+
+// Cerrar modales al hacer click fuera del contenido
+window.onclick = function(event) {
+    var modalPago = document.getElementById('modalProcesarPago');
+    var modalAuto = document.getElementById('modalPagoAutomatico');
+    
+    if (event.target === modalPago) {
+        cerrarModalPago();
+    }
+    if (event.target === modalAuto) {
+        cerrarModalPagoAutomatico();
     }
 }
 </script>

@@ -2,7 +2,7 @@ from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import Enum as SQLEnum, Column, Index
+from sqlalchemy import Column, Index
 from .enums import TipoMovimientoEnum
 
 if TYPE_CHECKING:
@@ -50,7 +50,6 @@ class RegistroFinancieroApartamento(SQLModel, table=True):
     )
     
     tipo_movimiento: TipoMovimientoEnum = Field(
-        sa_column=SQLEnum(TipoMovimientoEnum, name="tipo_movimiento_enum"),
         description="Tipo de movimiento: 'DEBITO' (aumenta deuda) o 'CREDITO' (disminuye deuda/pago)"
     )
     

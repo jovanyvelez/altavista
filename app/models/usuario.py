@@ -1,7 +1,6 @@
 from sqlmodel import SQLModel, Field, Relationship
 from datetime import datetime
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import Enum as SQLEnum
 from .enums import RolUsuarioEnum
 
 if TYPE_CHECKING:
@@ -16,7 +15,7 @@ class Usuario(SQLModel, table=True):
     hashed_password: str = Field(max_length=255)
     nombre_completo: Optional[str] = Field(default=None, max_length=255)
     rol: RolUsuarioEnum = Field(
-        sa_column=SQLEnum(RolUsuarioEnum, name="rol_usuario_enum")
+        description="Rol del usuario: ADMIN o PROPIETARIO"
     )
     is_active: bool = Field(default=True)
     propietario_id: Optional[int] = Field(default=None, foreign_key="propietario.id")
