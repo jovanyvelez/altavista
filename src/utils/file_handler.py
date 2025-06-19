@@ -2,7 +2,7 @@ from fastapi import UploadFile
 from pathlib import Path
 from uuid import uuid4
 import shutil
-from app.config import settings
+from src.config import settings
 
 def guardar_documento(archivo: UploadFile, carpeta: str = "") -> str:
     """

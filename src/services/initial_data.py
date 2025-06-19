@@ -1,5 +1,5 @@
 from sqlmodel import Session, select
-from app.models import (
+from src.models import (
     db_manager, Usuario, Propietario, Apartamento, Concepto,
     PresupuestoAnual, RolUsuarioEnum, TipoMovimientoEnum,
     RegistroFinancieroApartamento, ItemPresupuesto, TipoItemPresupuestoEnum

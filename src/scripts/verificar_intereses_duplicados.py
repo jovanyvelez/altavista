@@ -19,7 +19,7 @@ sys.path.insert(0, str(project_root))
 
 from sqlmodel import create_engine, Session, text
 from decimal import Decimal
-from app.models.database import DATABASE_URL
+from src.models.database import DATABASE_URL
 
 
 def verificar_intereses_duplicados():

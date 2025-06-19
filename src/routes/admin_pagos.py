@@ -3,12 +3,12 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select, func
 from typing import Optional, List
 from datetime import datetime, date
-from app.models import (
+from src.models import (
     db_manager, Apartamento, Concepto, TipoMovimientoEnum,
     RegistroFinancieroApartamento, CuotaConfiguracion,
     TasaInteresMora, ControlProcesamientoMensual
 )
-from app.dependencies import templates, require_admin, get_db_session
+from src.dependencies import templates, require_admin, get_db_session
 
 router = APIRouter(prefix="/admin/pagos", dependencies=[Depends(require_admin)])
 
@@ -625,7 +625,7 @@ async def procesar_generacion_automatica(
     forzar: bool = Form(False)
 ):
     """Ejecutar generación automática V3 integrada"""
-    from scripts.generador_v3_funcional import GeneradorAutomaticoV3
+    from src.scripts.generador_v3_funcional import GeneradorAutomaticoV3
     
     try:
         # Inicializar el generador V3
@@ -707,7 +707,7 @@ async def procesar_pago_automatico(
     referencia_pago: Optional[str] = Form(None)
 ):
     """Procesar pago automático con distribución inteligente"""
-    from app.services.pago_automatico import PagoAutomaticoService
+    from src.services.pago_automatico import PagoAutomaticoService
     
     try:
         # Validar monto
@@ -754,7 +754,7 @@ async def procesar_pago_automatico(
 @router.get("/resumen-deuda/{apartamento_id}")
 async def obtener_resumen_deuda(apartamento_id: int):
     """API endpoint para obtener resumen de deuda de un apartamento"""
-    from app.services.pago_automatico import PagoAutomaticoService
+    from src.services.pago_automatico import PagoAutomaticoService
     
     try:
         servicio_pago = PagoAutomaticoService()

@@ -5,12 +5,12 @@ from contextlib import asynccontextmanager
 
 
 # Importar configuración y servicios
-from app.config import settings
-from app.models import db_manager
-from app.services.initial_data import crear_datos_iniciales
+from src.config import settings
+from src.models import db_manager
+from src.services.initial_data import crear_datos_iniciales
 
 # Importar rutas
-from app.routes import auth_router, admin_router, admin_pagos_router, propietario_router
+from src.routes import auth_router, admin_router, admin_pagos_router, propietario_router
 
 
 @asynccontextmanager

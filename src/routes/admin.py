@@ -3,13 +3,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select, func
 from typing import Optional, List
 from datetime import datetime, date
-from app.models import (
+from src.models import (
     db_manager, Usuario, Propietario, Apartamento, Concepto,
     PresupuestoAnual, RolUsuarioEnum, TipoMovimientoEnum,
     RegistroFinancieroApartamento, ItemPresupuesto, TipoItemPresupuestoEnum
 )
-from app.dependencies import templates, require_admin, get_db_session
-from app.utils import guardar_documento
+from src.dependencies import templates, require_admin, get_db_session
+from src.utils import guardar_documento
 
 router = APIRouter(prefix="/admin", dependencies=[Depends(require_admin)])
 

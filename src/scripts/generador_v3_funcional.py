@@ -39,13 +39,13 @@ import logging
 from typing import Dict
 
 # Importaciones del proyecto
-from app.models.database import DATABASE_URL
-from app.models import (
+from src.models.database import DATABASE_URL
+from src.models import (
     Apartamento, Concepto, CuotaConfiguracion, 
     TasaInteresMora, RegistroFinancieroApartamento,
     ControlProcesamientoMensual
 )
-from app.models.enums import TipoMovimientoEnum
+from src.models.enums import TipoMovimientoEnum
 
 
 class GeneradorAutomaticoV3:

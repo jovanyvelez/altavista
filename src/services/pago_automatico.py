@@ -6,11 +6,11 @@ from datetime import datetime, date
 from typing import List, Dict, Tuple, Optional
 from sqlmodel import Session, select
 from decimal import Decimal, ROUND_HALF_UP
-from app.models import (
+from src.models import (
     RegistroFinancieroApartamento, Apartamento, Concepto,
     TipoMovimientoEnum
 )
-from app.dependencies import get_db_session
+from src.dependencies import get_db_session
 
 class PagoAutomaticoService:
     """Servicio para procesar pagos automáticamente con lógica de distribución"""

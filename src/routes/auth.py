@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlmodel import Session, select
-from app.models import db_manager, Usuario, RolUsuarioEnum
-from app.dependencies import templates
+from src.models import db_manager, Usuario, RolUsuarioEnum
+from src.dependencies import templates
 
 router = APIRouter()
 

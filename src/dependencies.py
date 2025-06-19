@@ -2,8 +2,8 @@ from fastapi import HTTPException, status, Request
 from fastapi.templating import Jinja2Templates
 from sqlmodel import Session, select
 from typing import Optional
-from app.models import db_manager, Usuario, Propietario, RolUsuarioEnum
-from app.config import settings
+from src.models import db_manager, Usuario, Propietario, RolUsuarioEnum
+from src.config import settings
 
 # Configurar plantillas
 templates = Jinja2Templates(directory=settings.TEMPLATES_DIR)
