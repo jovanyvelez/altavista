@@ -1,118 +1,150 @@
 #!/usr/bin/env python3
 """
-Verificación de corrección del bug en la lógica de intereses
-===========================================================
+Script de verificación del cálculo corregido de intereses
+=========================================================
 
-PROBLEMA IDENTIFICADO:
-- La condición WHERE (rfa.año_aplicable+rfa.mes_aplicable) <= '{año+mes}' era incorrecta
-- Sumaba año y mes como números en lugar de comparar fechas correctamente
-- No usaba fecha_efectiva para el corte del mes anterior
-
-SOLUCIÓN APLICADA:
-- Cambiado a WHERE rfa.fecha_efectiva <= '{fecha_limite}'
-- Usa la fecha límite del último día del mes anterior
-- Mantiene la lógica de cálculo de saldo neto correcta
-
-RESULTADO:
-- Con los datos del ejemplo (DÉBITO $72,000 + CRÉDITO $72,000 = saldo $0)
-- NO debe generar interés porque saldo neto <= $0.01
+Este script verifica que los intereses se calculen correctamente sobre
+el saldo neto (DEBITOS - CREDITOS) y no solo sobre débitos específicos.
 """
 
-def verificar_correccion():
-    """Verifica que la corrección funcione correctamente"""
+import sys
+from pathlib import Path
+
+# Agregar el directorio raíz del proyecto al path
+project_root = Path(__file__).parent
+sys.path.insert(0, str(project_root))
+
+from crear_cargos_historicos import GeneradorCargosHistoricos
+from app.models.database import DATABASE_URL
+from sqlmodel import create_engine, Session, text
+from decimal import Decimal
+
+def verificar_calculo_intereses():
+    """Verifica el cálculo correcto de intereses"""
     
-    print("="*80)
-    print("VERIFICACIÓN: CORRECCIÓN DE BUG EN LÓGICA DE INTERESES")
-    print("="*80)
+    print("🧮 VERIFICACIÓN DEL CÁLCULO CORREGIDO DE INTERESES")
+    print("=" * 60)
     
-    print("\n🐛 PROBLEMA ORIGINAL:")
-    print("   WHERE (rfa.año_aplicable+rfa.mes_aplicable) <= '{año+mes}'")
-    print("   ❌ Para año=2025, mes=2: (2025+1) <= (2025+2) → 2026 <= 2027 ✓")
-    print("   ❌ Incluye TODOS los movimientos de enero, no solo hasta el 31/01")
-    print("   ❌ Lógica matemática incorrecta para fechas")
+    generador = GeneradorCargosHistoricos()
+    engine = create_engine(DATABASE_URL)
     
-    print("\n🔧 CORRECCIÓN APLICADA:")
-    print("   WHERE rfa.fecha_efectiva <= '{fecha_limite}'")
-    print("   ✅ Para año=2025, mes=2: fecha_efectiva <= '2025-01-31'")
-    print("   ✅ Solo incluye movimientos hasta el último día del mes anterior")
-    print("   ✅ Lógica de fechas correcta")
+    # Apartamento de prueba
+    apartamento_id = 3  # Apartamento 9901
+    año_test = 2024
+    mes_test = 9  # Septiembre 2024
     
-    print("\n📊 CASO DE PRUEBA:")
-    print("   Apartamento 20 - Enero 2025:")
-    print("   | Movimiento | Fecha      | Monto    | Tipo    |")
-    print("   | ---------- | ---------- | -------- | ------- |")
-    print("   | Cuota      | 2025-01-05 | 72000.00 | DEBITO  |")
-    print("   | Pago       | 2025-01-15 | 72000.00 | CREDITO |")
+    print(f"\n📊 Analizando apartamento {apartamento_id} para {mes_test:02d}/{año_test}")
+    print("-" * 50)
     
-    print("\n🧮 CÁLCULO CORRECTO:")
-    print("   Para generar intereses en febrero 2025:")
-    print("   Fecha límite: 2025-01-31")
-    print("   Saldo neto = 72000.00 - 72000.00 = 0.00")
-    print("   Condición: 0.00 > 0.01 → FALSE")
-    print("   ✅ Resultado: NO genera interés (correcto)")
+    # Mes anterior para el cálculo base
+    if mes_test == 1:
+        año_anterior = año_test - 1
+        mes_anterior = 12
+    else:
+        año_anterior = año_test
+        mes_anterior = mes_test - 1
     
-    print("\n📋 OTROS EJEMPLOS:")
+    # 1. Mostrar el saldo neto calculado por el nuevo método
+    saldo_neto = generador.calcular_saldo_neto_al_mes(apartamento_id, año_anterior, mes_anterior)
+    print(f"✅ Saldo neto al {mes_anterior:02d}/{año_anterior}: ${saldo_neto:,.2f}")
     
-    ejemplos = [
-        {
-            'descripcion': 'Solo DÉBITO sin pago',
-            'debito': 72000,
-            'credito': 0,
-            'genera_interes': True
-        },
-        {
-            'descripcion': 'DÉBITO con pago parcial',
-            'debito': 72000,
-            'credito': 36000,
-            'genera_interes': True
-        },
-        {
-            'descripcion': 'DÉBITO con pago completo',
-            'debito': 72000,
-            'credito': 72000,
-            'genera_interes': False
-        },
-        {
-            'descripcion': 'DÉBITO con sobrepago',
-            'debito': 72000,
-            'credito': 80000,
-            'genera_interes': False
-        }
-    ]
-    
-    for ejemplo in ejemplos:
-        saldo = ejemplo['debito'] - ejemplo['credito']
-        resultado = "SÍ" if ejemplo['genera_interes'] else "NO"
-        icono = "✅" if saldo > 0.01 else "❌"
+    # 2. Desglosar el cálculo manualmente para verificación
+    with Session(engine) as session:
+        sql_desglose = f"""
+            SELECT 
+                concepto_id,
+                SUM(CASE WHEN tipo_movimiento = 'DEBITO' THEN monto ELSE 0 END) as total_debitos,
+                SUM(CASE WHEN tipo_movimiento = 'CREDITO' THEN monto ELSE 0 END) as total_creditos,
+                SUM(CASE WHEN tipo_movimiento = 'DEBITO' THEN monto ELSE -monto END) as saldo_neto
+            FROM registro_financiero_apartamento
+            WHERE apartamento_id = {apartamento_id}
+            AND fecha_efectiva <= '{año_anterior}-{mes_anterior:02d}-31'
+            AND concepto_id != 3  -- Excluir intereses
+            GROUP BY concepto_id
+            ORDER BY concepto_id
+        """
         
-        print(f"\n   {ejemplo['descripcion']}:")
-        print(f"   Saldo: ${saldo:,.2f} → {icono} {resultado} genera interés")
+        resultados = session.exec(text(sql_desglose)).all()
+        
+        print(f"\n📋 Desglose por concepto hasta {mes_anterior:02d}/{año_anterior}:")
+        print("Concepto | Débitos     | Créditos    | Saldo Neto")
+        print("-" * 50)
+        
+        total_debitos = Decimal('0.00')
+        total_creditos = Decimal('0.00')
+        total_neto = Decimal('0.00')
+        
+        for r in resultados:
+            print(f"   {r.concepto_id:2d}    | ${r.total_debitos:>10,.2f} | ${r.total_creditos:>10,.2f} | ${r.saldo_neto:>10,.2f}")
+            total_debitos += r.total_debitos
+            total_creditos += r.total_creditos
+            total_neto += r.saldo_neto
+        
+        print("-" * 50)
+        print(f" TOTAL   | ${total_debitos:>10,.2f} | ${total_creditos:>10,.2f} | ${total_neto:>10,.2f}")
+        
+        # 3. Verificar que coincide con nuestro método
+        print(f"\n🔍 Verificación:")
+        print(f"   Método calcular_saldo_neto_al_mes(): ${saldo_neto:,.2f}")
+        print(f"   Cálculo manual:                      ${total_neto:,.2f}")
+        
+        if abs(saldo_neto - total_neto) < Decimal('0.01'):
+            print("   ✅ ¡Los cálculos coinciden!")
+        else:
+            print("   ❌ Los cálculos NO coinciden")
     
-    print("\n🎯 VALIDACIÓN FINAL:")
-    print("   ✅ La corrección elimina el bug de suma incorrecta de año+mes")
-    print("   ✅ Usa fecha_efectiva para corte temporal correcto")
-    print("   ✅ Calcula saldo neto correctamente (DÉBITO - CRÉDITO)")
-    print("   ✅ Solo genera interés cuando saldo neto > $0.01")
+    # 4. Mostrar la tasa de interés que se aplicaría
+    tasa = generador.obtener_tasa_interes(año_anterior, mes_anterior)
+    tasa_porcentaje = float(tasa) * 100
     
-    print("\n📝 SQL CORREGIDO:")
-    print("""
-    WITH saldos_apartamento AS (
-        SELECT 
-            rfa.apartamento_id,
-            SUM(CASE 
-                WHEN rfa.tipo_movimiento = 'DEBITO' THEN rfa.monto 
-                ELSE -rfa.monto 
-            END) as saldo_pendiente
-        FROM registro_financiero_apartamento rfa
-        LEFT JOIN concepto c ON rfa.concepto_id = c.id
-        WHERE rfa.fecha_efectiva <= '2025-01-31'  -- CORREGIDO: usa fecha_efectiva
-        AND conceptos_no_interes...
-        GROUP BY rfa.apartamento_id
-        HAVING saldo_pendiente > 0.01
-    )
-    """)
+    print(f"\n💰 Cálculo de interés para {mes_test:02d}/{año_test}:")
+    print(f"   Base de cálculo: ${saldo_neto:,.2f}")
+    print(f"   Tasa aplicable:  {tasa_porcentaje:.2f}%")
     
-    print("="*80)
+    if saldo_neto > Decimal('0.01'):
+        interes_calculado = saldo_neto * tasa
+        print(f"   Interés resultante: ${interes_calculado:,.2f}")
+    else:
+        print("   No se genera interés (sin saldo pendiente)")
+    
+    # 5. Probar la generación real del interés
+    print(f"\n🔧 Probando generación real del interés...")
+    
+    # Primero verificar si ya existe
+    with Session(engine) as session:
+        sql_existe = f"""
+            SELECT COUNT(*) as existe
+            FROM registro_financiero_apartamento
+            WHERE apartamento_id = {apartamento_id}
+            AND concepto_id = 3
+            AND año_aplicable = {año_test}
+            AND mes_aplicable = {mes_test}
+        """
+        
+        existe = session.exec(text(sql_existe)).first().existe
+        
+        if existe > 0:
+            print("   ⚠️  Ya existe un interés para este período, se omite la prueba")
+        else:
+            exito = generador.crear_cargo_interes_calculado(apartamento_id, año_test, mes_test)
+            if exito:
+                print("   ✅ Interés generado exitosamente")
+            else:
+                print("   ❌ Error generando interés")
+
+def main():
+    """Función principal"""
+    try:
+        verificar_calculo_intereses()
+        
+        print("\n" + "=" * 60)
+        print("✅ VERIFICACIÓN COMPLETADA")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"\n❌ Error durante la verificación: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    verificar_correccion()
+    main()

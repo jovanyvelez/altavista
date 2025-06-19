@@ -43,6 +43,3 @@ app.include_router(admin_pagos_router)
 app.include_router(propietario_router)
 
 # Eventos de inicio y cierre
-
-
-

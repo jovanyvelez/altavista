@@ -8,9 +8,17 @@ con un enfoque más directo y confiable.
 
 ✅ Generación automática de cuotas ordinarias  
 ✅ Cálculo automático de intereses moratorios
+✅ Aplicación automática de saldos a favor al próximo período
 ✅ Control de duplicados
 ✅ Manejo correcto de enums
 ✅ Logging y auditoría
+
+NUEVA FUNCIONALIDAD: Aplicación Automática de Saldos a Favor
+-----------------------------------------------------------
+- Detecta apartamentos con saldo positivo (prepagos/créditos)
+- Aplica automáticamente estos saldos al siguiente período
+- Genera créditos automáticos para el próximo mes
+- Reduce automáticamente la cuota del período siguiente
 
 Ejecutar: 
   python scripts/generador_v3_funcional.py [año] [mes] [forzar]
@@ -65,6 +73,8 @@ class GeneradorAutomaticoV3:
             'intereses_generados': 0,
             'monto_cuotas': Decimal('0.00'),
             'monto_intereses': Decimal('0.00'),
+            'saldos_favor_aplicados': 0,
+            'monto_saldos_favor': Decimal('0.00'),
             'errores': [],
             'ya_procesado': False
         }
@@ -90,17 +100,24 @@ class GeneradorAutomaticoV3:
                 resultado['intereses_generados'] = resultado_intereses['intereses_generados']
                 resultado['monto_intereses'] = resultado_intereses['monto_intereses']
                 
-                # 4. Confirmar cambios
+                # 4. Aplicar saldos a favor al próximo período
+                self.logger.info(f"Aplicando saldos a favor al próximo período después de {mes:02d}/{año}")
+                resultado_saldos_favor = self._aplicar_saldos_a_favor_proximo_periodo(session, año, mes)
+                resultado['saldos_favor_aplicados'] = resultado_saldos_favor['saldos_aplicados']
+                resultado['monto_saldos_favor'] = resultado_saldos_favor['monto_aplicado']
+                
+                # 5. Confirmar cambios
                 session.commit()
                 
-                # 5. Marcar como procesado
+                # 6. Marcar como procesado
                 self._marcar_procesado(session, año, mes, resultado)
                 
                 tiempo_total = datetime.now() - inicio
                 self.logger.info(
                     f"Procesamiento completado en {tiempo_total.total_seconds():.2f}s: "
                     f"{resultado['cuotas_generadas']} cuotas (${resultado['monto_cuotas']:,.2f}), "
-                    f"{resultado['intereses_generados']} intereses (${resultado['monto_intereses']:,.2f})"
+                    f"{resultado['intereses_generados']} intereses (${resultado['monto_intereses']:,.2f}), "
+                    f"{resultado['saldos_favor_aplicados']} saldos a favor aplicados (${resultado['monto_saldos_favor']:,.2f})"
                 )
                 
             except Exception as e:
@@ -122,9 +139,11 @@ class GeneradorAutomaticoV3:
         
         controles = session.exec(stmt).all()
         
-        # Verificar que existan controles para cuotas e intereses
+        # Verificar que existan controles para cuotas, intereses y saldos a favor
         tipos_completados = {control.tipo_procesamiento for control in controles}
-        return ('CUOTAS' in tipos_completados and 'INTERESES' in tipos_completados)
+        return ('CUOTAS' in tipos_completados and 
+                'INTERESES' in tipos_completados and 
+                'SALDOS_FAVOR' in tipos_completados)
     
     def _generar_cuotas_ordinarias(self, session: Session, año: int, mes: int) -> Dict:
         """Genera las cuotas ordinarias usando SQL directo para evitar problemas de enum"""
@@ -322,6 +341,125 @@ class GeneradorAutomaticoV3:
         
         return resultado
     
+    def _aplicar_saldos_a_favor_proximo_periodo(self, session: Session, año: int, mes: int) -> Dict:
+        """
+        Aplica automáticamente saldos a favor (créditos/prepagos) al próximo período de facturación.
+        
+        LÓGICA:
+        1. Identifica apartamentos con saldo a favor (más créditos que débitos)
+        2. Calcula el próximo período (mes+1, año+1 si es diciembre)
+        3. Genera un crédito para el próximo período
+        4. Esto efectivamente aplica el prepago/crédito al siguiente mes
+        
+        Ejemplo: Si en enero un apartamento queda con $100 a favor después de todos los cargos,
+        se genera un crédito de $100 para febrero, reduciendo automáticamente su cuota.
+        """
+        resultado = {
+            'saldos_aplicados': 0,
+            'monto_aplicado': Decimal('0.00')
+        }
+        
+        # Calcular el próximo período
+        if mes == 12:
+            mes_siguiente = 1
+            año_siguiente = año + 1
+        else:
+            mes_siguiente = mes + 1
+            año_siguiente = año
+        
+        # Obtener concepto para aplicación de saldo a favor
+        stmt_concepto = select(Concepto).where(
+            Concepto.nombre.ilike('%aplicación%favor%') | 
+            Concepto.nombre.ilike('%prepago%') |
+            Concepto.nombre.ilike('%crédito%aplicado%')
+        ).limit(1)
+        
+        concepto_aplicacion = session.exec(stmt_concepto).first()
+        if not concepto_aplicacion:
+            # Si no existe el concepto, usar el concepto de Pago Cuota (ID 5)
+            concepto_aplicacion = session.exec(
+                select(Concepto).where(Concepto.id == 5)
+            ).first()
+        
+        if not concepto_aplicacion:
+            self.logger.warning("No se encontró concepto para aplicación de saldo a favor")
+            return resultado
+        
+        self.logger.info(f"Concepto para aplicación de saldo: {concepto_aplicacion.nombre} (ID: {concepto_aplicacion.id})")
+        
+        # SQL para identificar apartamentos con saldo a favor después del procesamiento del mes actual
+        sql_saldos_favor = f"""
+            WITH saldos_actuales AS (
+                SELECT 
+                    rfa.apartamento_id,
+                    SUM(CASE 
+                        WHEN rfa.tipo_movimiento = 'CREDITO' THEN rfa.monto 
+                        ELSE -rfa.monto 
+                    END) as saldo_a_favor
+                FROM registro_financiero_apartamento rfa
+                WHERE rfa.fecha_efectiva <= DATE('{año}' || '-' || LPAD('{mes}'::text, 2, '0') || '-28')
+                GROUP BY rfa.apartamento_id
+                HAVING SUM(CASE 
+                    WHEN rfa.tipo_movimiento = 'CREDITO' THEN rfa.monto 
+                    ELSE -rfa.monto 
+                END) > 0.01  -- Solo saldos a favor significativos (más de 1 centavo)
+            )
+            INSERT INTO registro_financiero_apartamento 
+            (apartamento_id, concepto_id, fecha_efectiva, monto, 
+             tipo_movimiento, descripcion_adicional, mes_aplicable, año_aplicable)
+            SELECT 
+                sa.apartamento_id,
+                {concepto_aplicacion.id},
+                DATE('{año_siguiente}' || '-' || LPAD('{mes_siguiente}'::text, 2, '0') || '-01'),
+                ROUND(sa.saldo_a_favor, 2),
+                'CREDITO'::tipo_movimiento_enum,
+                'Aplicación automática saldo a favor de ' || LPAD('{mes}'::text, 2, '0') || '/' || '{año}' ||
+                ' aplicado a ' || LPAD('{mes_siguiente}'::text, 2, '0') || '/' || '{año_siguiente}' ||
+                ' (Saldo: $' || ROUND(sa.saldo_a_favor, 2) || ')',
+                {mes_siguiente},
+                {año_siguiente}
+            FROM saldos_actuales sa
+            WHERE NOT EXISTS (
+                SELECT 1 FROM registro_financiero_apartamento rfa
+                WHERE rfa.apartamento_id = sa.apartamento_id 
+                AND rfa.concepto_id = {concepto_aplicacion.id}
+                AND rfa.año_aplicable = {año_siguiente}
+                AND rfa.mes_aplicable = {mes_siguiente}
+                AND rfa.descripcion_adicional LIKE 'Aplicación automática saldo a favor%'
+                AND rfa.descripcion_adicional LIKE '%de {mes:02d}/{año}%'
+            )
+        """
+        
+        try:
+            # Ejecutar la inserción
+            result = session.exec(text(sql_saldos_favor))
+            resultado['saldos_aplicados'] = result.rowcount
+            
+            # Calcular monto total aplicado
+            if resultado['saldos_aplicados'] > 0:
+                sql_monto = f"""
+                    SELECT COALESCE(SUM(monto), 0) as total
+                    FROM registro_financiero_apartamento
+                    WHERE año_aplicable = {año_siguiente}
+                    AND mes_aplicable = {mes_siguiente}
+                    AND concepto_id = {concepto_aplicacion.id}
+                    AND descripcion_adicional LIKE 'Aplicación automática saldo a favor%'
+                    AND descripcion_adicional LIKE '%de {mes:02d}/{año}%'
+                """
+                
+                monto_result = session.exec(text(sql_monto)).first()
+                if monto_result:
+                    resultado['monto_aplicado'] = Decimal(str(monto_result.total))
+            
+            self.logger.info(f"Saldos a favor: {resultado['saldos_aplicados']} aplicados por ${resultado['monto_aplicado']:,.2f} al período {mes_siguiente:02d}/{año_siguiente}")
+            
+        except Exception as e:
+            self.logger.error(f"Error aplicando saldos a favor: {e}")
+            # No hacer raise para no afectar el procesamiento principal
+            pass
+        
+        return resultado
+    
     def _marcar_procesado(self, session: Session, año: int, mes: int, resultado: Dict):
         """Marca el procesamiento como completado"""
         try:
@@ -347,9 +485,21 @@ class GeneradorAutomaticoV3:
                 monto_total_generado=resultado['monto_intereses']
             )
             
+            # Marcar saldos a favor como procesados
+            control_saldos = ControlProcesamientoMensual(
+                año=año,
+                mes=mes,
+                tipo_procesamiento='SALDOS_FAVOR',
+                estado='COMPLETADO',
+                fecha_procesamiento=datetime.now(),
+                registros_procesados=resultado['saldos_favor_aplicados'],
+                monto_total_generado=resultado['monto_saldos_favor']
+            )
+            
             # Usar merge para evitar duplicados
             session.merge(control_cuotas)
             session.merge(control_intereses)
+            session.merge(control_saldos)
             session.commit()
             
             self.logger.info("Control de procesamiento actualizado")
@@ -386,6 +536,7 @@ def main():
                     print(f"\n✅ Procesamiento completado:")
                     print(f"   📊 Cuotas: {resultado['cuotas_generadas']} (${resultado['monto_cuotas']:,.2f})")
                     print(f"   💰 Intereses: {resultado['intereses_generados']} (${resultado['monto_intereses']:,.2f})")
+                    print(f"   🔄 Saldos a favor aplicados: {resultado['saldos_favor_aplicados']} (${resultado['monto_saldos_favor']:,.2f})")
                 
                 if resultado['errores']:
                     print(f"\n❌ Errores encontrados:")
@@ -405,6 +556,7 @@ def main():
             print(f"\n✅ Resultado:")
             print(f"   📊 Cuotas: {resultado['cuotas_generadas']} (${resultado['monto_cuotas']:,.2f})")
             print(f"   💰 Intereses: {resultado['intereses_generados']} (${resultado['monto_intereses']:,.2f})")
+            print(f"   🔄 Saldos a favor aplicados: {resultado['saldos_favor_aplicados']} (${resultado['monto_saldos_favor']:,.2f})")
             
             if resultado['ya_procesado']:
                 print("ℹ️  El mes ya había sido procesado")
