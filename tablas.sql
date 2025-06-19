@@ -177,3 +177,5 @@ BEGIN
         ', t_name, t_name);
     END LOOP;
 END$$;
+
+--DATABASE_URL = "postgresql://postgres:NqYMCFXBEQYYJ60u@db.xnmealeoourdfcgsyfqv.supabase.co:5432/postgres"
