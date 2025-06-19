@@ -5,12 +5,6 @@ from typing import Optional
 
 # Cambia aquí la cadena de conexión para usar PostgreSQL en vez de SQLite
 
-
-
-#DATABASE_URL = "postgresql://postgres:NqYMCFXBEQYYJ60u@db.xnmealeoourdfcgsyfqv.supabase.co:5432/postgres"
-
-# NqYMCFXBEQYYJ60u
-
 engine = create_engine(getenv("DATABASE_URL"), echo=False)
 
 class DatabaseManager:
