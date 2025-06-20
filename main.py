@@ -13,21 +13,12 @@ from src.services.initial_data import crear_datos_iniciales
 from src.routes import auth_router, admin_router, admin_pagos_router, propietario_router
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Inicializar base de datos y datos de prueba"""
-    db_manager.create_tables()
-    await crear_datos_iniciales()
-    yield
-    """Limpieza al cerrar la aplicación"""
-    pass
 
 # Crear la aplicación FastAPI
 app = FastAPI(
     title=settings.APP_TITLE,
     description=settings.APP_DESCRIPTION,
     version=settings.APP_VERSION,
-    lifespan=lifespan
 )
 
 # Agregar middleware de sesiones
