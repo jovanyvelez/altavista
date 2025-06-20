@@ -9,11 +9,12 @@ load_dotenv()
 url_database = os.environ.get('DATABASE_URL')
 
 # Convertir la URL para usar pg8000 en lugar de psycopg2
+"""
 if url_database and url_database.startswith('postgresql://'):
     url_database = url_database.replace('postgresql://', 'postgresql+pg8000://')
 elif url_database and url_database.startswith('postgres://'):
     url_database = url_database.replace('postgres://', 'postgresql+pg8000://')
-
+"""
 engine = create_engine(url_database, echo=False)
 
 class DatabaseManager:
