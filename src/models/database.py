@@ -4,9 +4,16 @@ from sqlalchemy import create_engine, UniqueConstraint, Index
 from sqlmodel import SQLModel, Session, create_engine as sqlmodel_create_engine
 from typing import Optional
 
-# Cambia aquí la cadena de conexión para usar PostgreSQL en vez de SQLite
+# Cambia aquí la cadena de conexión para usar PostgreSQL con pg8000
 load_dotenv()
-url_database = os.environ.get('DATABASE_URL', 'sqlite:///./database.db')
+url_database = os.environ.get('DATABASE_URL')
+
+# Convertir la URL para usar pg8000 en lugar de psycopg2
+if url_database and url_database.startswith('postgresql://'):
+    url_database = url_database.replace('postgresql://', 'postgresql+pg8000://')
+elif url_database and url_database.startswith('postgres://'):
+    url_database = url_database.replace('postgres://', 'postgresql+pg8000://')
+
 engine = create_engine(url_database, echo=False)
 
 class DatabaseManager:
