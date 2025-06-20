@@ -1,11 +1,13 @@
-from os import getenv
+from dotenv import load_dotenv
+import os
 from sqlalchemy import create_engine, UniqueConstraint, Index
 from sqlmodel import SQLModel, Session, create_engine as sqlmodel_create_engine
 from typing import Optional
 
 # Cambia aquí la cadena de conexión para usar PostgreSQL en vez de SQLite
-
-engine = create_engine(getenv("DATABASE_URL"), echo=False)
+load_dotenv()
+url_database = os.environ.get('DATABASE_URL', 'sqlite:///./database.db')
+engine = create_engine(url_database, echo=False)
 
 class DatabaseManager:
     def __init__(self, engine):
